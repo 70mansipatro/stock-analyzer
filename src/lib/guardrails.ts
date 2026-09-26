@@ -1,7 +1,7 @@
 import "server-only";
 import { generateText, Output, type TextStreamPart, type ToolSet } from "ai";
-import { googleVertex } from "@ai-sdk/google-vertex";
 import { z } from "zod";
+import { googleVertex } from "@/lib/ai";
 import { audit } from "@/lib/audit";
 
 /**

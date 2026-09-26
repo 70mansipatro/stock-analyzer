@@ -1,6 +1,29 @@
 import "server-only";
 import { APICallError, wrapLanguageModel } from "ai";
-import { googleVertex } from "@ai-sdk/google-vertex";
+import { createGoogleVertex } from "@ai-sdk/google-vertex";
+
+/**
+ * Google Cloud credentials for Vertex AI, in order:
+ *   1. GOOGLE_VERTEX_CREDENTIALS: a service-account JSON key pasted into .env.local (raw JSON or base64),
+ *      so sharing the env file is enough and access is controlled by that account's IAM role.
+ *   2. Otherwise Application Default Credentials: GOOGLE_APPLICATION_CREDENTIALS (key file path)
+ *      or `gcloud auth application-default login`.
+ */
+function serviceAccountCredentials() {
+  const raw = process.env.GOOGLE_VERTEX_CREDENTIALS?.trim();
+  if (!raw) return undefined;
+  const json = raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
+  try {
+    const key = JSON.parse(json) as { client_email?: string; private_key?: string };
+    if (!key.client_email || !key.private_key) throw new Error("missing client_email or private_key");
+    return { client_email: key.client_email, private_key: key.private_key };
+  } catch (err) {
+    throw new Error(`GOOGLE_VERTEX_CREDENTIALS is not a valid service-account JSON key: ${(err as Error).message}`);
+  }
+}
+
+const credentials = serviceAccountCredentials();
+export const googleVertex = createGoogleVertex(credentials ? { googleAuthOptions: { credentials } } : {});
 
 const isRateLimit = (err: unknown) => APICallError.isInstance(err) && err.statusCode === 429;
 

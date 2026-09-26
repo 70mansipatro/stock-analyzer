@@ -50,6 +50,8 @@ View the database with `npm run db:studio` (http://localhost:5555).
 
 **"redirect_uri_mismatch"**: open the app at exactly `http://localhost:3000`, or add your URL to the OAuth client's redirect URIs.
 
+**Chat says it "can't authenticate with Google Cloud"** (server log: `Could not load the default credentials`): this computer has no Google Cloud credentials for Vertex AI. Either install the [gcloud CLI](https://cloud.google.com/sdk/docs/install) and run `gcloud auth application-default login` with an account that has the **Vertex AI User** role on the project, or set `GOOGLE_APPLICATION_CREDENTIALS` in `.env.local` to the path of a service-account JSON key. Restart `npm run dev` afterwards.
+
 **"Access blocked" / AccessDenied**: while the Google app is in Testing mode, add your Gmail under Google Auth Platform → Audience → Test users.
 
 ## Guardrails

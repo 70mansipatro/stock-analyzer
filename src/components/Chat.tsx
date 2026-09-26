@@ -101,7 +101,8 @@ export function Chat({ initialQuestion }: { initialQuestion?: string }) {
         {status === "submitted" && <div className="text-sm text-slate-500">Thinking…</div>}
         {error && (
           <div className="flex items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            Something went wrong. <button onClick={() => regenerate()} className="underline">Retry</button>
+            <span>{error.message || "Something went wrong."}</span>
+            <button onClick={() => regenerate()} className="shrink-0 underline">Retry</button>
           </div>
         )}
         <div ref={bottomRef} />

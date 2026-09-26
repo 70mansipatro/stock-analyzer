@@ -106,6 +106,10 @@ export async function POST(req: Request) {
           return "That confirmation could not be verified, so no trade was placed. Please ask again.";
         }
         console.error("chat stream error", err);
+        const msg = String((err as Error)?.message ?? err);
+        if (/default credentials|invalid_grant|reauth|UNAUTHENTICATED|PERMISSION_DENIED|status code 40[13]/i.test(msg)) {
+          return "The AI service can't authenticate with Google Cloud on this computer. Run `gcloud auth application-default login` (or set GOOGLE_APPLICATION_CREDENTIALS) and restart the app.";
+        }
         return "Sorry, something went wrong while answering. Please try again.";
       },
     }),

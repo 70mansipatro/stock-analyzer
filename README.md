@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stock Analyzer
 
-## Getting Started
+Stock market analysis app with Google SSO, an AI assistant (tool calling + guardrails), statistical forecasts and **paper trading** (simulated, no real money).
 
-First, run the development server:
+- **Dashboard:** portfolio summary and today's top US stocks (most active, gainers, losers)
+- **Stock page:** live quote, 12-month chart with moving averages, technical signals, forecast, buy/sell
+- **Portfolio:** holdings at live prices, P&L, trade history
+- **AI Assistant:** chat that calls tools to list, analyze, forecast and trade (trades need a click to confirm)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Stack: Next.js 16, Auth.js (Google), Postgres + Prisma 7, Vercel AI SDK 7 + Gemini on Vertex AI, Yahoo Finance data, Recharts.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Install dependencies (also generates the Prisma client):
+   ```bash
+   npm install
+   ```
+2. Create a Postgres database, e.g. with Homebrew:
+   ```bash
+   brew install postgresql@17 && brew services start postgresql@17
+   createdb stockapp
+   ```
+3. Copy `.env.example` to `.env.local` and fill it in:
+   - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`: a Google OAuth **Web application** client with redirect URI `http://localhost:3000/api/auth/callback/google`
+   - `AUTH_SECRET` and `TOOL_APPROVAL_SECRET`: `openssl rand -base64 32`
+   - `GOOGLE_VERTEX_PROJECT`: a GCP project with the Vertex AI API enabled
+4. Log in to Google Cloud for Vertex AI:
+   ```bash
+   gcloud auth application-default login
+   ```
+5. Create the tables and start the app:
+   ```bash
+   npx prisma migrate dev
+   npm run dev
+   ```
+   Open http://localhost:3000.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+View the database with `npm run db:studio` (http://localhost:5555).
 
-## Learn More
+## Guardrails
 
-To learn more about Next.js, take a look at the following resources:
+| Layer | Where | What |
+|---|---|---|
+| Input | `src/lib/guardrails.ts` | Length limit, per-user rate limit, prompt-injection patterns, LLM topic/safety classifier |
+| Model | `src/app/api/chat/route.ts` | System instructions: numbers only from tools, no promised returns, no personal advice |
+| Tools | `src/lib/trading.ts`, `src/lib/chat-tools.ts` | User ID from session, server-side prices, order limits, cash/holding checks, signed user confirmation before any trade |
+| Output | `src/lib/guardrails.ts` | Streaming filter that rewrites "guaranteed returns", "risk-free" and similar claims |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Every block and trade is recorded in the `AuditLog` table.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Not financial advice. Market data may be delayed.

@@ -34,6 +34,11 @@ export function ChatWidget() {
   const [mounted, setMounted] = useState(false);
   // Server render assumes "seen" so the first-visit hint never flashes during hydration.
   const seen = useSyncExternalStore(subscribeSeen, readSeen, () => true);
+  const [hintGone, setHintGone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setHintGone(true), 7000);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -63,11 +68,11 @@ export function ChatWidget() {
           role="dialog"
           aria-label="AI assistant"
           hidden={!open}
-          className="animate-pop-in fixed inset-x-3 bottom-36 top-20 z-50 flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#070b16]/95 shadow-2xl shadow-black/60 backdrop-blur-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:top-auto sm:h-[min(640px,calc(100dvh-8rem))] sm:w-[420px] lg:bottom-24"
+          className="animate-pop-in fixed inset-x-3 bottom-36 top-20 z-50 flex flex-col overflow-hidden rounded-3xl border border-ink/10 bg-surface-2/95 shadow-2xl shadow-black/60 backdrop-blur-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:top-auto sm:h-[min(640px,calc(100dvh-8rem))] sm:w-[420px] lg:bottom-24"
         >
-          <div className="relative flex items-center gap-3 border-b border-white/5 px-4 py-3">
+          <div className="relative flex items-center gap-3 border-b border-ink/5 px-4 py-3">
             <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-sky-500/10 to-violet-500/10" />
-            <span className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-[#0b1222] text-emerald-300 ring-1 ring-white/10">
+            <span className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-3 text-emerald-300 ring-1 ring-ink/10">
               <AssistantMark className="h-6 w-6" animated />
             </span>
             <div className="relative min-w-0 flex-1">
@@ -76,10 +81,10 @@ export function ChatWidget() {
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Gemini · 8 market tools · guardrails on
               </div>
             </div>
-            <Link href="/assistant" onClick={() => setOpen(false)} aria-label="Open full screen" className="relative rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white">
+            <Link href="/assistant" onClick={() => setOpen(false)} aria-label="Open full screen" className="relative rounded-lg p-2 text-slate-400 hover:bg-ink/5 hover:text-slate-50">
               <Maximize2 className="h-4 w-4" />
             </Link>
-            <button onClick={() => setOpen(false)} aria-label="Minimise" className="relative rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white">
+            <button onClick={() => setOpen(false)} aria-label="Minimise" className="relative rounded-lg p-2 text-slate-400 hover:bg-ink/5 hover:text-slate-50">
               <Minus className="h-4 w-4" />
             </button>
           </div>
@@ -90,8 +95,8 @@ export function ChatWidget() {
       )}
 
       <div className="fixed bottom-20 right-4 z-50 flex items-center gap-3 sm:right-6 lg:bottom-6">
-        {!seen && !open && (
-          <div className="glass animate-fade-up hidden rounded-2xl px-3.5 py-2 text-sm text-slate-200 sm:block">
+        {!seen && !open && !hintGone && (
+          <div className="animate-fade-up hidden rounded-2xl border border-ink/10 bg-surface-2 px-3.5 py-2 text-sm text-slate-200 shadow-xl sm:block">
             Ask me about any stock <span className="text-slate-500">· Ctrl J</span>
           </div>
         )}

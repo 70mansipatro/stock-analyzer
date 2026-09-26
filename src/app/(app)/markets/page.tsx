@@ -56,13 +56,13 @@ export default async function MarketsPage({ searchParams }: { searchParams: Prom
         icon={ListOrdered}
         tone="sky"
         action={
-          <div className="flex gap-1 rounded-xl bg-white/[0.04] p-1">
+          <div className="flex gap-1 rounded-xl bg-ink/[0.04] p-1">
             {CATEGORIES.map((c) => (
               <Link
                 key={c}
                 href={`/markets?list=${c}`}
                 scroll={false}
-                className={`rounded-lg px-3 py-1 text-xs transition ${c === category ? "bg-white/10 text-white" : "text-slate-400 hover:text-slate-200"}`}
+                className={`rounded-lg px-3 py-1 text-xs transition ${c === category ? "bg-ink/10 text-slate-50" : "text-slate-400 hover:text-slate-200"}`}
               >
                 {TOP_CATEGORY_LABELS[c]}
               </Link>
@@ -85,13 +85,13 @@ export default async function MarketsPage({ searchParams }: { searchParams: Prom
                   <th className="hidden pb-2 text-right font-normal md:table-cell">Market cap</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-ink/5">
                 {top.map((s, i) => (
-                  <tr key={s.symbol} className="transition hover:bg-white/[0.03]">
+                  <tr key={s.symbol} className="transition hover:bg-ink/[0.03]">
                     <td className="py-2.5 text-xs text-slate-600">{i + 1}</td>
                     <td className="py-2.5">
                       <Link href={`/stock/${encodeURIComponent(s.symbol)}`} className="flex items-center gap-3">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-[10px] font-semibold">{s.symbol.slice(0, 4)}</span>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink/5 text-[10px] font-semibold">{s.symbol.slice(0, 4)}</span>
                         <span>
                           <span className="block font-medium">{s.symbol}</span>
                           <span className="block max-w-[14rem] truncate text-xs text-slate-500">{s.name}</span>

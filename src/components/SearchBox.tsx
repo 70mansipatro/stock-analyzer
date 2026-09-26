@@ -82,7 +82,7 @@ export function SearchBox() {
         </div>
       )}
       {open && hits.length > 0 && (
-        <ul className="absolute z-40 mt-2 w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0f1c]/95 shadow-2xl backdrop-blur-xl">
+        <ul className="absolute z-40 mt-2 w-full overflow-hidden rounded-xl border border-ink/10 bg-surface-2/95 shadow-2xl backdrop-blur-xl">
           {hits.map((h, i) => (
             <li key={h.symbol}>
               <button

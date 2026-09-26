@@ -6,6 +6,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   AccessDenied:
     "Access denied. While the app is in Testing mode, your Google account must be added as a test user.",
   Configuration: "Sign-in is misconfigured. Check the Google client ID and secret.",
+  Suspended: "This account has been suspended by an administrator.",
 };
 
 const FEATURES = [

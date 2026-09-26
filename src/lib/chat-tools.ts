@@ -5,7 +5,9 @@ import { analyzeStock } from "@/lib/analysis";
 import { getQuote, getTopStocks, MarketError, searchSymbols, TOP_CATEGORY_LABELS, type TopCategory } from "@/lib/market";
 import { getNewsInsight } from "@/lib/insights";
 import { predictStock } from "@/lib/prediction";
-import { executeOrder, getPortfolio, LIMITS, TradeError, validateOrder } from "@/lib/trading";
+import { can, type AppRole } from "@/lib/rbac";
+import type { PlatformSettings } from "@/lib/settings";
+import { executeOrder, getPortfolio, TradeError, validateOrder } from "@/lib/trading";
 import { audit } from "@/lib/audit";
 
 const symbolField = z
@@ -29,8 +31,8 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | { error: string }> {
 /**
  * Tools are built per request so `userId` comes from the verified session, never from model output.
  */
-export function buildTools(userId: string) {
-  return {
+export function buildTools(userId: string, settings: PlatformSettings, role: AppRole) {
+  const tools = {
     getTopStocks: tool({
       description: "List today's top US stocks: most active, biggest gainers, or biggest losers.",
       inputSchema: z.object({
@@ -97,16 +99,23 @@ export function buildTools(userId: string) {
     }),
 
     placeTrade: tool({
-      description: `Place a simulated (paper) buy or sell order at the current market price. The user must confirm it in the app before it runs. Max ${LIMITS.maxSharesPerOrder.toLocaleString()} shares and $${LIMITS.maxOrderValue.toLocaleString()} per order.`,
+      description: `Place a simulated (paper) buy or sell order at the current market price. The user must confirm it in the app before it runs. Max ${settings.maxSharesPerOrder.toLocaleString()} shares and $${settings.maxOrderValue.toLocaleString()} per order.`,
       inputSchema: z.object({
         symbol: symbolField,
         side: z.enum(["BUY", "SELL"]),
-        quantity: z.number().int().positive().max(LIMITS.maxSharesPerOrder),
+        quantity: z.number().int().positive().max(settings.maxSharesPerOrder),
       }),
       // Runs only after the user approves; re-validates against the latest price, cash and holdings.
       execute: (input) => safe(() => executeOrder(userId, input, "CHAT")),
     }),
   };
+  // Roles without the trade permission (Viewer, Auditor) never get the trade tool, so the model can't even try.
+  if (!can(role, "trade") || !settings.tradingEnabled) {
+    const { placeTrade: _omit, ...readOnly } = tools;
+    void _omit;
+    return readOnly as typeof tools;
+  }
+  return tools;
 }
 
 export type ChatTools = ReturnType<typeof buildTools>;

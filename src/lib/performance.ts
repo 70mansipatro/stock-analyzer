@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getHistory, getQuotes, getSector } from "@/lib/market";
-import { getPortfolio, STARTING_CASH, type Portfolio } from "@/lib/trading";
+import { getPortfolio, type Portfolio } from "@/lib/trading";
 
 export type PerformancePoint = { date: string; portfolio: number; benchmark: number | null };
 
@@ -15,13 +15,14 @@ export type Performance = {
 /**
  * Rebuilds the account value for every trading day since the first trade:
  * cash after that day's trades + shares held × that day's close (in USD).
- * The benchmark is the S&P 500 scaled to the same $100,000 start.
+ * The benchmark is the S&P 500 scaled to the same starting cash.
  * Non-USD holdings use today's exchange rate for the whole history (a simplification).
  */
 export async function getPerformance(userId: string, portfolio?: Portfolio): Promise<Performance> {
   const trades = await prisma.trade.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
   const current = portfolio ?? (await getPortfolio(userId));
   const benchmarkLabel = "S&P 500";
+  const STARTING_CASH = current.startingCash;
   if (trades.length === 0) {
     return { points: [], benchmarkLabel, portfolioReturnPct: current.totalReturnPct, benchmarkReturnPct: null };
   }

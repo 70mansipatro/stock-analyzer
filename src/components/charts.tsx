@@ -14,8 +14,8 @@ import {
 
 // Categorical slots validated for the dark surface (dataviz palette, dark steps).
 export const SERIES = { price: "#3987e5", sma50: "#d95926", sma200: "#9085e9" };
-const GRID = "#1e293b";
-const AXIS = "#64748b";
+const GRID = "var(--chart-grid)";
+const AXIS = "var(--chart-axis)";
 
 const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const fmtMonth = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
@@ -38,12 +38,14 @@ function TooltipBox({ label, rows }: { label: string; rows: { name: string; valu
   );
 }
 
-export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean; band?: boolean }[] }) {
+export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean; band?: boolean; square?: boolean }[] }) {
   return (
     <div className="flex flex-wrap gap-4 text-xs text-slate-400">
       {items.map((i) => (
         <span key={i.label} className="flex items-center gap-1.5">
-          {i.band ? (
+          {i.square ? (
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: i.color }} />
+          ) : i.band ? (
             <span className="inline-block h-3 w-4 rounded-sm" style={{ background: i.color, opacity: 0.25 }} />
           ) : (
             <span
@@ -95,7 +97,7 @@ export function PriceChart({ data }: { data: PricePoint[] }) {
             />
             <Line dataKey="sma200" stroke={SERIES.sma200} strokeWidth={1.5} dot={false} connectNulls isAnimationActive={false} />
             <Line dataKey="sma50" stroke={SERIES.sma50} strokeWidth={1.5} dot={false} connectNulls isAnimationActive={false} />
-            <Line dataKey="close" stroke={SERIES.price} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#0f172a", strokeWidth: 2 }} isAnimationActive={false} />
+            <Line dataKey="close" stroke={SERIES.price} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--chart-gap)", strokeWidth: 2 }} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

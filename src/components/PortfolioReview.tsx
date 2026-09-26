@@ -45,7 +45,7 @@ export function PortfolioReview({ hasHoldings }: { hasHoldings: boolean }) {
         >
           {loading ? (
             <>
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Analyzing your portfolio…
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink/30 border-t-white" /> Analyzing your portfolio…
             </>
           ) : (
             <>✦ Run AI portfolio review</>
@@ -63,7 +63,7 @@ export function PortfolioReview({ hasHoldings }: { hasHoldings: boolean }) {
       <div className="flex items-center gap-4">
         <div className="relative h-20 w-20 shrink-0" role="img" aria-label={`Risk score ${review.riskScore} out of 10`}>
           <svg viewBox="0 0 36 36" className="h-20 w-20 -rotate-90">
-            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#1e293b" strokeWidth="3.5" />
+            <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--chart-grid)" strokeWidth="3.5" />
             <circle
               cx="18"
               cy="18"

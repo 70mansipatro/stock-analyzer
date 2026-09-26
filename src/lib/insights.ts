@@ -6,6 +6,7 @@ import { analyzeStock } from "@/lib/analysis";
 import { audit } from "@/lib/audit";
 import { rewriteClaims } from "@/lib/guardrails";
 import { getNews, getQuote, type NewsItem } from "@/lib/market";
+import { getSettings } from "@/lib/settings";
 import { getAllocation } from "@/lib/performance";
 import { getPortfolio } from "@/lib/trading";
 
@@ -34,6 +35,10 @@ export async function getNewsInsight(symbol: string): Promise<NewsInsight> {
   const hit = newsCache.get(key);
   if (hit && hit.expires > Date.now()) return hit.value;
 
+  if (!(await getSettings()).aiEnabled) {
+    const news = await getNews(symbol, 8);
+    return { items: news.map((n) => ({ ...n, sentiment: "neutral" as Sentiment, reason: "" })), score: 0, label: "neutral", summary: "AI sentiment is turned off by an administrator." };
+  }
   const company = await getQuote(symbol).then((q) => q.name).catch(() => undefined);
   const news = await getNews(symbol, 8, company);
   if (news.length === 0) return { items: [], score: 0, label: "neutral", summary: "No recent headlines found." };

@@ -78,7 +78,7 @@ export default async function PortfolioPage() {
                   <th className="pb-2 text-right font-normal">Weight</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-ink/5">
                 {p.positions.map((pos) => (
                   <tr key={pos.symbol} className="hover:bg-slate-800/40">
                     <td className="py-2">
@@ -123,7 +123,7 @@ export default async function PortfolioPage() {
                   <th className="pb-2 text-right font-normal">Via</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-ink/5">
                 {trades.map((t) => (
                   <tr key={t.id}>
                     <td className="py-2 text-slate-400">{new Date(t.createdAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</td>

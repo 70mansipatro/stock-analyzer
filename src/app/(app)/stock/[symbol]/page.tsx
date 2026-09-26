@@ -15,7 +15,8 @@ import { compact, money, num, pct } from "@/lib/format";
 import { MarketError, resolveSymbol } from "@/lib/market";
 import { prisma } from "@/lib/prisma";
 import { predictStock, type Prediction } from "@/lib/prediction";
-import { LIMITS } from "@/lib/trading";
+import { can } from "@/lib/rbac";
+import { getSettings } from "@/lib/settings";
 
 const HORIZONS = [10, 30, 60, 90];
 
@@ -54,11 +55,17 @@ export default async function StockPage({
     );
   }
 
-  const [prediction, user, holding] = await Promise.all([
+  const [prediction, user, holding, settings] = await Promise.all([
     predictStock(symbol, horizon).catch((e: Error) => e),
     prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { cashBalance: true } }),
     prisma.holding.findUnique({ where: { userId_symbol: { userId, symbol: analysis.quote.symbol } } }),
+    getSettings(),
   ]);
+  const tradeBlocked = !can(session!.user.role, "trade")
+    ? "Your role can view markets but can't place trades. Ask an admin to make you a Trader."
+    : !settings.tradingEnabled
+      ? "Trading is paused by an administrator."
+      : null;
 
   const q = analysis.quote;
   const ind = analysis.indicators;
@@ -96,9 +103,9 @@ export default async function StockPage({
             icon={Telescope}
             tone="violet"
             action={
-              <div className="flex gap-1 rounded-lg bg-white/[0.04] p-1">
+              <div className="flex gap-1 rounded-lg bg-ink/[0.04] p-1">
                 {HORIZONS.map((d) => (
-                  <Link key={d} href={`?h=${d}`} scroll={false} className={`rounded-md px-2.5 py-1 text-xs ${d === horizon ? "bg-slate-950 text-white" : "text-slate-400 hover:text-slate-200"}`}>
+                  <Link key={d} href={`?h=${d}`} scroll={false} className={`rounded-md px-2.5 py-1 text-xs ${d === horizon ? "bg-surface-1 text-slate-50 shadow-sm" : "text-slate-400 hover:text-slate-200"}`}>
                     {d}d
                   </Link>
                 ))}
@@ -121,6 +128,9 @@ export default async function StockPage({
 
         <div className="space-y-6">
           <Card title="Paper trade" subtitle="Virtual cash · live price" icon={ArrowLeftRight} tone="emerald">
+            {tradeBlocked ? (
+              <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">{tradeBlocked}</p>
+            ) : (
             <TradeForm
               symbol={q.symbol}
               price={q.priceUsd}
@@ -128,8 +138,9 @@ export default async function StockPage({
               currency={q.currency}
               cash={Number(user.cashBalance)}
               owned={holding?.quantity ?? 0}
-              maxOrderValue={LIMITS.maxOrderValue}
+              maxOrderValue={settings.maxOrderValue}
             />
+            )}
           </Card>
 
           <Card title="Technical analysis" icon={Gauge} tone="sky">

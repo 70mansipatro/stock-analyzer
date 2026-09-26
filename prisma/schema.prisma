@@ -7,9 +7,12 @@ datasource db {
   provider = "postgresql"
 }
 
+// USER = Trader (default). AUDITOR = read-only admin. VIEWER = can browse but not trade.
 enum Role {
   USER
   ADMIN
+  AUDITOR
+  VIEWER
 }
 
 model User {
@@ -22,6 +25,9 @@ model User {
   lastLoginAt   DateTime?
   // Virtual paper-trading cash. No real money.
   cashBalance   Decimal   @default(100000) @db.Decimal(14, 2)
+  // Cash the account started (or was last reset) with; returns are measured from this.
+  startingCash  Decimal   @default(100000) @db.Decimal(14, 2)
+  suspended     Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -132,4 +138,27 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([event, createdAt])
+}
+
+// Role given to an email by an admin, applied when that person signs in (or immediately if they already have).
+model RoleAssignment {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  role         Role
+  assignedById String?
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Platform-wide settings, one row with id "global".
+model AppSettings {
+  id                String   @id @default("global")
+  maxOrderValue     Decimal  @default(50000) @db.Decimal(14, 2)
+  maxSharesPerOrder Int      @default(10000)
+  startingCash      Decimal  @default(100000) @db.Decimal(14, 2)
+  tradingEnabled    Boolean  @default(true)
+  aiEnabled         Boolean  @default(true)
+  updatedById       String?
+  updatedAt         DateTime @updatedAt
 }

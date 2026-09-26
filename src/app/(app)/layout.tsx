@@ -4,6 +4,7 @@ import { ChatWidget } from "@/components/ChatWidget";
 import { MarketTicker } from "@/components/MarketTicker";
 import { SearchBox } from "@/components/SearchBox";
 import { Logo, MobileNav, Sidebar } from "@/components/Sidebar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Toaster } from "@/components/Toaster";
 import { money } from "@/lib/format";
 import { getMarketOverview } from "@/lib/market";
@@ -31,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar user={user} signOutAction={signOutAction} cashLabel={money(Number(account?.cashBalance ?? 0))} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-white/5 bg-[#04060d]/75 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 border-b border-ink/5 bg-surface-0/75 backdrop-blur-xl">
           <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
             <div className="lg:hidden">
               <Logo compact />
@@ -47,9 +48,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 </span>
               ))}
             </div>
+            <ThemeToggle />
             {user.image && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.image} alt="" className="h-8 w-8 rounded-full ring-2 ring-white/10 lg:hidden" referrerPolicy="no-referrer" />
+              <img src={user.image} alt="" className="h-8 w-8 rounded-full ring-2 ring-ink/10 lg:hidden" referrerPolicy="no-referrer" />
             )}
           </div>
           <MarketTicker initial={overview} />
@@ -57,7 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 pb-28 pt-6 sm:px-6 lg:pb-10">{children}</main>
 
-        <footer className="hidden border-t border-white/5 px-6 py-4 text-center text-xs text-slate-600 lg:block">
+        <footer className="hidden border-t border-ink/5 px-6 py-4 text-center text-xs text-slate-600 lg:block">
           Paper trading only. No real money is used. Market data from Yahoo Finance, may be delayed. Not financial advice.
         </footer>
       </div>

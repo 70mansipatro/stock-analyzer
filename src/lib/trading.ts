@@ -4,6 +4,9 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getQuote, getQuotes, normalizeSymbol } from "@/lib/market";
 import { audit } from "@/lib/audit";
+import { roleOf } from "@/lib/roles";
+import { can, ROLE_INFO } from "@/lib/rbac";
+import { getSettings } from "@/lib/settings";
 
 /**
  * Paper trading only: no broker is called and no real money moves.
@@ -13,15 +16,13 @@ import { audit } from "@/lib/audit";
  * so these checks can't be skipped by the LLM or by a modified client.
  */
 
-export const LIMITS = {
-  maxSharesPerOrder: 10_000,
-  maxOrderValue: 50_000,
-};
+/** Hard ceiling for schema validation; the live per-order limits come from admin settings. */
+const MAX_SHARES_CEILING = 1_000_000;
 
 export const orderSchema = z.object({
-  symbol: z.string().min(1).max(15),
+  symbol: z.string().min(1).max(20),
   side: z.enum(["BUY", "SELL"]),
-  quantity: z.number().int().positive().max(LIMITS.maxSharesPerOrder),
+  quantity: z.number().int().positive().max(MAX_SHARES_CEILING),
 });
 export type OrderInput = z.infer<typeof orderSchema>;
 
@@ -45,9 +46,14 @@ export type OrderPreview = {
 
 /** Checks an order against live price, limits, cash and holdings. Does not change anything. */
 export async function validateOrder(userId: string, input: OrderInput): Promise<OrderPreview> {
+  const [settings, role] = await Promise.all([getSettings(), roleOf(userId)]);
+  if (!role) throw new TradeError("Your account is suspended or no longer exists.");
+  if (!can(role, "trade")) throw new TradeError(`Your role (${ROLE_INFO[role].label}) can view markets but can't place trades.`);
+  if (!settings.tradingEnabled) throw new TradeError("Trading is paused by an administrator. Please try again later.");
+
   const parsed = orderSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new TradeError(`Quantity must be a whole number between 1 and ${LIMITS.maxSharesPerOrder.toLocaleString()}.`);
+  if (!parsed.success || parsed.data.quantity > settings.maxSharesPerOrder) {
+    throw new TradeError(`Quantity must be a whole number between 1 and ${settings.maxSharesPerOrder.toLocaleString()}.`);
   }
   const { side, quantity } = parsed.data;
   const symbol = normalizeSymbol(parsed.data.symbol);
@@ -57,9 +63,9 @@ export async function validateOrder(userId: string, input: OrderInput): Promise<
   const price = quote.priceUsd;
   const total = Number((price * quantity).toFixed(2));
 
-  if (total > LIMITS.maxOrderValue) {
+  if (total > settings.maxOrderValue) {
     throw new TradeError(
-      `Order value $${total.toLocaleString()} is over the $${LIMITS.maxOrderValue.toLocaleString()} per-order limit.`,
+      `Order value $${total.toLocaleString()} is over the $${settings.maxOrderValue.toLocaleString()} per-order limit.`,
     );
   }
 
@@ -195,16 +201,16 @@ export type Portfolio = {
   positions: PortfolioPosition[];
 };
 
-export const STARTING_CASH = 100_000;
 
 export async function getPortfolio(userId: string): Promise<Portfolio> {
   const [user, holdings, realized] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { cashBalance: true } }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { cashBalance: true, startingCash: true } }),
     prisma.holding.findMany({ where: { userId }, orderBy: { symbol: "asc" } }),
     prisma.trade.aggregate({ where: { userId, side: "SELL" }, _sum: { realizedPnl: true } }),
   ]);
   const quotes = await getQuotes(holdings.map((h) => h.symbol));
   const cash = Number(user.cashBalance);
+  const startingCash = Number(user.startingCash) || 100_000;
 
   const positions: PortfolioPosition[] = holdings.map((h) => {
     const q = quotes.get(h.symbol);
@@ -243,8 +249,8 @@ export async function getPortfolio(userId: string): Promise<Portfolio> {
     costBasis: Number(costBasis.toFixed(2)),
     unrealizedPnl: Number((investedValue - costBasis).toFixed(2)),
     realizedPnl: Number(realized._sum.realizedPnl ?? 0),
-    startingCash: STARTING_CASH,
-    totalReturnPct: Number((((totalValue - STARTING_CASH) / STARTING_CASH) * 100).toFixed(2)),
+    startingCash,
+    totalReturnPct: Number((((totalValue - startingCash) / startingCash) * 100).toFixed(2)),
     positions,
   };
 }

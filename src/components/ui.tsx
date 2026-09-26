@@ -93,7 +93,7 @@ export function Stat({
   trend?: { values: number[]; up: boolean };
 }) {
   return (
-    <div className="glass group relative overflow-hidden rounded-2xl p-4 transition hover:-translate-y-0.5 hover:border-white/15">
+    <div className="glass group relative overflow-hidden rounded-2xl p-4 transition hover:-translate-y-0.5 hover:border-ink/15">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-slate-400">{label}</span>
         {icon && <IconBadge icon={icon} tone={tone} size="sm" />}

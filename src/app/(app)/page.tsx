@@ -49,7 +49,7 @@ export default async function Dashboard() {
         subtitle={`${today} · Your paper portfolio at a glance`}
       >
         <div className="flex gap-2">
-          <Link href="/markets" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-slate-200 transition hover:border-white/20">
+          <Link href="/markets" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-slate-200 transition hover:border-ink/20">
             <Activity className="h-4 w-4 text-sky-300" /> Markets
           </Link>
           <Link
@@ -123,8 +123,8 @@ export default async function Dashboard() {
             <ul className="space-y-1">
               {portfolio.positions.slice(0, 5).map((p) => (
                 <li key={p.symbol}>
-                  <Link href={`/stock/${encodeURIComponent(p.symbol)}`} className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-white/[0.04]">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-xs font-semibold text-slate-200">
+                  <Link href={`/stock/${encodeURIComponent(p.symbol)}`} className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-ink/[0.04]">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ink/5 text-xs font-semibold text-slate-200">
                       {p.symbol.replace(/\.NS$/, "").slice(0, 4)}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -157,7 +157,7 @@ export default async function Dashboard() {
               icon={m.icon}
               tone={m.tone}
               action={
-                <Link href="/markets" className="text-xs text-slate-400 hover:text-white">
+                <Link href="/markets" className="text-xs text-slate-400 hover:text-slate-50">
                   More
                 </Link>
               }
@@ -168,7 +168,7 @@ export default async function Dashboard() {
                 <ul className="space-y-0.5">
                   {rows.map((s) => (
                     <li key={s.symbol}>
-                      <Link href={`/stock/${encodeURIComponent(s.symbol)}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition hover:bg-white/[0.04]">
+                      <Link href={`/stock/${encodeURIComponent(s.symbol)}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition hover:bg-ink/[0.04]">
                         <span className="min-w-0">
                           <span className="block text-sm font-medium">{s.symbol}</span>
                           <span className="block truncate text-xs text-slate-500">{s.name}</span>

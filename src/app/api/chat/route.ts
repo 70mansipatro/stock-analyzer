@@ -13,13 +13,16 @@ import { chatModel } from "@/lib/ai";
 import { buildToolApproval, buildTools, type ChatMessage } from "@/lib/chat-tools";
 import { audit } from "@/lib/audit";
 import { checkInput, outputGuardrail } from "@/lib/guardrails";
-import { LIMITS } from "@/lib/trading";
+import { currentActor } from "@/lib/authz";
+import { can, ROLE_INFO, type AppRole } from "@/lib/rbac";
+import { getSettings, type PlatformSettings } from "@/lib/settings";
 
 export const maxDuration = 60;
 
 const MAX_HISTORY = 30;
 
-function instructions(userName: string) {
+function instructions(userName: string, settings: PlatformSettings, role: AppRole) {
+  const canTrade = can(role, "trade") && settings.tradingEnabled;
   const today = new Date().toISOString().slice(0, 10);
   return `You are the assistant inside "Stock Analyzer", a stock analysis app with PAPER (simulated) trading. Today is ${today}. The user is ${userName}.
 
@@ -32,7 +35,8 @@ Rules:
 1. Every price, percentage or statistic you state must come from a tool result in this conversation. Never invent or estimate numbers. If a tool returns an error, explain it plainly.
 2. Stay on topic: stocks, markets, investing concepts, and this user's paper portfolio. Politely decline anything else.
 3. Stocks from any exchange are supported (e.g. RRKABEL.NS on NSE India). If the user names a company or a ticker without a suffix, call searchStocks first. Quotes are in the stock's own currency (see "currency"); the paper account is in USD and trades convert at the live rate ("priceUsd"). Say which currency a number is in.
-3b. Trading is simulated. No real money moves. Never claim otherwise. Max ${LIMITS.maxSharesPerOrder.toLocaleString()} shares and $${LIMITS.maxOrderValue.toLocaleString()} per order.
+3b. Trading is simulated. No real money moves. Never claim otherwise. Max ${settings.maxSharesPerOrder.toLocaleString()} shares and $${settings.maxOrderValue.toLocaleString()} per order.
+${canTrade ? "" : `3c. This user CANNOT trade (${!settings.tradingEnabled ? "trading is paused by an administrator" : `their role is ${ROLE_INFO[role].label}`}). If they ask to buy or sell, explain that politely; you have no trade tool.`}
 4. To trade, call placeTrade with a whole-number quantity. The app shows the user a confirmation card; do not ask them to confirm in text first. If the user gives a dollar amount, get a quote and convert it to whole shares (round down).
 5. If a trade is denied automatically, tell the user why and suggest a fix (e.g. fewer shares). If the user pressed Cancel, just confirm the order was cancelled.
    When placeTrade returns a result with a tradeId, the trade HAS BEEN EXECUTED: report it in the past tense ("Bought 2 AAPL at $X"). Never say it is still pending.
@@ -60,11 +64,15 @@ function refusal(message: string, reason: string) {
 export async function POST(req: Request) {
   // Identity always comes from the SSO session, never from the request body.
   const session = await auth();
-  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
-  const userId = session.user.id;
+  const actor = await currentActor();
+  if (!session?.user?.id || !actor) return new Response("Unauthorized", { status: 401 });
+  const userId = actor.id;
+  const settings = await getSettings();
 
   const body = await req.json().catch(() => null);
-  const tools = buildTools(userId);
+  if (!settings.aiEnabled) return refusal("The AI assistant is turned off by an administrator right now.", "ai_disabled");
+  if (!can(actor.role, "ai.chat")) return refusal("Your role doesn't include the AI assistant.", "not_permitted");
+  const tools = buildTools(userId, settings, actor.role);
 
   let messages: ChatMessage[];
   try {
@@ -81,11 +89,13 @@ export async function POST(req: Request) {
     if (!text) return new Response("Empty message", { status: 400 });
     const verdict = await checkInput(userId, text);
     if (!verdict.allowed) return refusal(verdict.message, verdict.reason);
+    // Usage metric for the admin console (length only, not the message text).
+    void audit(userId, "chat_message", { chars: text.length });
   }
 
   const result = streamText({
     model: chatModel(),
-    instructions: instructions(session.user.name ?? "the user"),
+    instructions: instructions(actor.name ?? "the user", settings, actor.role),
     messages: await convertToModelMessages(messages, { tools, ignoreIncompleteToolCalls: true }),
     tools,
     toolApproval: buildToolApproval(userId),

@@ -5,7 +5,7 @@ import { Legend } from "@/components/charts";
 
 // Categorical slots (dataviz dark steps), fixed order; validated on the app surface. Cash is a neutral, not a hue.
 const SLOTS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9", "#e66767"];
-const CASH = "#475569";
+const CASH = "var(--chart-neutral)";
 const PORTFOLIO = "#3987e5";
 const BENCH = "#d95926";
 
@@ -37,11 +37,11 @@ export function PerformanceChart({ points, benchmarkLabel }: { points: Point[]; 
                 <stop offset="100%" stopColor={PORTFOLIO} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={fmtDate} stroke="#64748b" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={40} />
-            <YAxis domain={["auto", "auto"]} tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`} stroke="#64748b" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={52} />
+            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+            <XAxis dataKey="date" tickFormatter={fmtDate} stroke="var(--chart-axis)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={40} />
+            <YAxis domain={["auto", "auto"]} tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`} stroke="var(--chart-axis)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={52} />
             <Tooltip
-              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+              cursor={{ stroke: "var(--chart-axis)", strokeDasharray: "3 3" }}
               content={({ active, payload, label }: TooltipContentProps) => {
                 if (!active || !payload?.length) return null;
                 const p = payload[0].payload as Point;
@@ -76,7 +76,7 @@ export function AllocationDonut({ slices, title }: { slices: Slice[]; title: str
       <div className="relative h-40 w-40 shrink-0">
         <ResponsiveContainer>
           <PieChart>
-            <Pie data={colored} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="100%" paddingAngle={1.5} stroke="#0f172a" strokeWidth={2} isAnimationActive={false}>
+            <Pie data={colored} dataKey="value" nameKey="name" innerRadius="64%" outerRadius="100%" paddingAngle={1.5} stroke="var(--chart-gap)" strokeWidth={2} isAnimationActive={false}>
               {colored.map((s) => (
                 <Cell key={s.name} fill={s.color} />
               ))}

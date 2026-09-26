@@ -89,7 +89,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
       <div className={`flex-1 space-y-5 overflow-y-auto ${widget ? "px-4 py-4" : "pb-4 pr-1"}`}>
         {messages.length === 0 && (
           <div className={`text-center ${widget ? "pt-4" : "pt-12"}`}>
-            <span className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#0b1222] text-emerald-300 shadow-lg shadow-sky-500/20 ring-1 ring-white/10">
+            <span className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-surface-3 text-emerald-300 shadow-lg shadow-sky-500/20 ring-1 ring-ink/10">
               <AssistantMark className="h-9 w-9" animated />
             </span>
             <h2 className={`mt-4 font-semibold ${widget ? "text-lg" : "text-2xl"}`}>
@@ -103,7 +103,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
                 <button
                   key={s}
                   onClick={() => submit(s)}
-                  className="glass flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 transition hover:border-emerald-400/40 hover:text-white"
+                  className="glass flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 transition hover:border-emerald-400/40 hover:text-slate-50"
                 >
                   {s}
                   <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-500" />
@@ -122,7 +122,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
             </div>
           ) : (
             <div key={m.id} className="flex gap-3">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0b1222] text-emerald-300 ring-1 ring-white/10">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-emerald-300 ring-1 ring-ink/10">
                 <AssistantMark className="h-4.5 w-4.5" />
               </span>
               <div className="min-w-0 flex-1 space-y-3">
@@ -136,7 +136,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
 
         {status === "submitted" && (
           <div className="flex items-center gap-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0b1222] text-emerald-300 ring-1 ring-white/10">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-3 text-emerald-300 ring-1 ring-ink/10">
               <AssistantMark className="h-4.5 w-4.5" animated />
             </span>
             <span className="flex gap-1" aria-label="Thinking">
@@ -160,7 +160,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
           e.preventDefault();
           submit(input);
         }}
-        className={widget ? "border-t border-white/5 p-3" : "pt-3"}
+        className={widget ? "border-t border-ink/5 p-3" : "pt-3"}
       >
         <div className="glass flex items-center gap-2 rounded-2xl p-1.5 pl-4 focus-within:border-emerald-400/50">
           <input
@@ -172,7 +172,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
             aria-label="Message the AI assistant"
           />
           {busy ? (
-            <button type="button" onClick={() => stop()} aria-label="Stop" className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-700 text-white hover:bg-slate-600">
+            <button type="button" onClick={() => stop()} aria-label="Stop" className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-600 text-slate-50 hover:bg-slate-600">
               <Square className="h-3.5 w-3.5 fill-current" />
             </button>
           ) : (

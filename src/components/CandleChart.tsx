@@ -14,6 +14,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
 import { macdSeries, rsiSeries, sma } from "@/lib/indicators";
+import { cssVar, useTheme } from "@/lib/theme";
 
 type Candle = { time: number | string; open: number; high: number; low: number; close: number; volume: number };
 type Range = "1D" | "5D" | "1M" | "6M" | "1Y" | "5Y";
@@ -37,6 +38,7 @@ export function CandleChart({ symbol, currency }: { symbol: string; currency: st
   const [intraday, setIntraday] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [readout, setReadout] = useState<Readout | null>(null);
+  const theme = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -67,14 +69,14 @@ export function CandleChart({ symbol, currency }: { symbol: string; currency: st
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#94a3b8",
+        textColor: cssVar("--chart-text", "#94a3b8"),
         fontSize: 11,
-        panes: { separatorColor: "#1e293b", separatorHoverColor: "#334155", enableResize: true },
+        panes: { separatorColor: cssVar("--chart-grid", "#1e293b"), separatorHoverColor: cssVar("--chart-axis", "#334155"), enableResize: true },
       },
-      grid: { vertLines: { color: "#111a2e" }, horzLines: { color: "#111a2e" } },
+      grid: { vertLines: { color: cssVar("--chart-grid", "#111a2e") }, horzLines: { color: cssVar("--chart-grid", "#111a2e") } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#1e293b" },
-      timeScale: { borderColor: "#1e293b", timeVisible: intraday, secondsVisible: false },
+      rightPriceScale: { borderColor: cssVar("--chart-grid", "#1e293b") },
+      timeScale: { borderColor: cssVar("--chart-grid", "#1e293b"), timeVisible: intraday, secondsVisible: false },
     });
     chartRef.current = chart;
 
@@ -102,8 +104,8 @@ export function CandleChart({ symbol, currency }: { symbol: string; currency: st
     if (show.rsi) {
       const rsi = chart.addSeries(LineSeries, { ...overlay, color: RSI_C, lastValueVisible: true }, pane);
       rsi.setData(line(rsiSeries(closes)));
-      rsi.createPriceLine({ price: 70, color: "#64748b", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "70" });
-      rsi.createPriceLine({ price: 30, color: "#64748b", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "30" });
+      rsi.createPriceLine({ price: 70, color: cssVar("--chart-axis", "#64748b"), lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "70" });
+      rsi.createPriceLine({ price: 30, color: cssVar("--chart-axis", "#64748b"), lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "30" });
       pane++;
     }
     if (show.macd) {
@@ -134,7 +136,7 @@ export function CandleChart({ symbol, currency }: { symbol: string; currency: st
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, intraday, show]);
+  }, [candles, intraday, show, theme]);
 
   const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   const toggles: { key: keyof typeof show; label: string; color: string }[] = [
@@ -159,7 +161,7 @@ export function CandleChart({ symbol, currency }: { symbol: string; currency: st
                 setError(null);
                 setRange(r);
               }}
-              className={`rounded-md px-2.5 py-1 text-xs ${r === range ? "bg-slate-950 text-white" : "text-slate-400 hover:text-slate-200"}`}
+              className={`rounded-md px-2.5 py-1 text-xs ${r === range ? "bg-surface-1 text-slate-50 shadow-sm" : "text-slate-400 hover:text-slate-200"}`}
             >
               {r}
             </button>

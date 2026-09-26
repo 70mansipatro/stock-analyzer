@@ -82,7 +82,7 @@ export function Heatmap({ initial, initialRegion = "US" }: { initial: Tile[]; in
             <button
               key={r}
               onClick={() => setRegion(r)}
-              className={`rounded-md px-3 py-1 text-xs ${r === region ? "bg-slate-950 text-white" : "text-slate-400 hover:text-slate-200"}`}
+              className={`rounded-md px-3 py-1 text-xs ${r === region ? "bg-surface-1 text-slate-50 shadow-sm" : "text-slate-400 hover:text-slate-200"}`}
             >
               {r === "US" ? "US large caps" : "India (NIFTY)"}
             </button>

@@ -11,6 +11,7 @@ import type { ChatMessage } from "@/lib/chat-tools";
 import { compact, money, pct, signedMoney } from "@/lib/format";
 import { Change } from "@/components/Change";
 import { ForecastChart, PriceChart } from "@/components/charts";
+import { toast } from "@/lib/toast";
 
 type Part = ChatMessage["parts"][number];
 
@@ -28,6 +29,7 @@ const TOOL_LABELS: Record<string, string> = {
   getQuote: "Getting live quote",
   analyzeStock: "Running technical analysis",
   predictStock: "Building forecast",
+  getNews: "Reading the latest headlines",
   getPortfolio: "Loading your portfolio",
   placeTrade: "Preparing order",
 };
@@ -54,6 +56,20 @@ export function Chat({ initialQuestion }: { initialQuestion?: string }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
+  // Toast once for each trade the assistant completes.
+  const toasted = useRef(new Set<string>());
+  useEffect(() => {
+    for (const m of messages) {
+      for (const p of m.parts) {
+        if (p.type !== "tool-placeTrade" || p.state !== "output-available" || toasted.current.has(p.toolCallId)) continue;
+        toasted.current.add(p.toolCallId);
+        const o = p.output;
+        if ("error" in o) toast("error", "Order not placed", o.error);
+        else toast("success", "Order filled", `${o.side === "BUY" ? "Bought" : "Sold"} ${o.quantity} ${o.symbol} at ${money(o.price)}`);
+      }
+    }
   }, [messages]);
 
   const submit = (text: string) => {
@@ -240,6 +256,26 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
           </div>
           <ForecastChart history={f.history} forecast={f.forecast} compactHeight />
           <p className="mt-2 text-xs text-slate-500">{f.disclaimer}</p>
+        </ToolCard>
+      );
+    }
+    case "tool-getNews": {
+      const n = part.output as Exclude<typeof part.output, { error: string }> | undefined;
+      if (!n) return null;
+      const tone = { positive: "text-emerald-400", negative: "text-red-400", neutral: "text-slate-300" } as const;
+      const icon = { positive: "▲", negative: "▼", neutral: "●" } as const;
+      return (
+        <ToolCard title={`News tone: ${n.label}`}>
+          <ul className="space-y-2 text-sm">
+            {n.items.slice(0, 6).map((it) => (
+              <li key={it.id} className="flex gap-2">
+                <span className={`${tone[it.sentiment]} shrink-0`} aria-label={it.sentiment}>{icon[it.sentiment]}</span>
+                <a href={it.link} target="_blank" rel="noopener noreferrer" className="text-slate-200 hover:text-emerald-300">
+                  {it.title} <span className="text-xs text-slate-500">· {it.publisher}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
         </ToolCard>
       );
     }

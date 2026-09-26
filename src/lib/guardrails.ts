@@ -133,6 +133,11 @@ function rewrite(text: string): { text: string; hits: number } {
   return { text: out, hits };
 }
 
+/** Output rail for non-streamed AI text (news summaries, portfolio reviews). */
+export function rewriteClaims(text: string): string {
+  return rewrite(text).text;
+}
+
 export function outputGuardrail(userId: string) {
   return <TOOLS extends ToolSet>() =>
     () => {

@@ -2,7 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { Change } from "@/components/Change";
-import { ForecastChart, PriceChart } from "@/components/charts";
+import { Suspense } from "react";
+import { CandleChart } from "@/components/CandleChart";
+import { ForecastChart } from "@/components/charts";
+import { NewsPanel, NewsSkeleton } from "@/components/NewsPanel";
 import { TradeForm } from "@/components/TradeForm";
 import { Card, ErrorNote } from "@/components/ui";
 import { analyzeStock, type Analysis } from "@/lib/analysis";
@@ -81,8 +84,8 @@ export default async function StockPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Price, last 12 months">
-            <PriceChart data={analysis.chart} />
+          <Card title="Chart">
+            <CandleChart symbol={q.symbol} currency={q.currency} />
           </Card>
 
           <Card
@@ -102,6 +105,12 @@ export default async function StockPage({
             ) : (
               <ForecastView p={prediction} />
             )}
+          </Card>
+
+          <Card title="Latest news · AI sentiment">
+            <Suspense fallback={<NewsSkeleton />}>
+              <NewsPanel symbol={q.symbol} />
+            </Suspense>
           </Card>
         </div>
 

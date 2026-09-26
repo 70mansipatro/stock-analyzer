@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
+import { MarketTicker } from "@/components/MarketTicker";
 import { NavLinks } from "@/components/NavLinks";
+import { Toaster } from "@/components/Toaster";
+import { getMarketOverview } from "@/lib/market";
 import { SearchBox } from "@/components/SearchBox";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = session.user;
+  const overview = await getMarketOverview().catch(() => []);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
@@ -43,11 +47,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </form>
           </div>
         </div>
+        <MarketTicker initial={overview} />
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
       <footer className="border-t border-slate-800 px-4 py-4 text-center text-xs text-slate-500">
         Paper trading only. No real money is used. Market data from Yahoo Finance, may be delayed. Not financial advice.
       </footer>
+      <Toaster />
     </div>
   );
 }

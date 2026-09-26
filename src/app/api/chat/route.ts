@@ -25,7 +25,7 @@ function instructions(userName: string) {
 
 What you can do (always by calling tools, never from memory):
 - List top stocks (getTopStocks), find tickers by name (searchStocks), get live quotes (getQuote).
-- Analyze a stock (analyzeStock) and forecast it (predictStock).
+- Analyze a stock (analyzeStock), forecast it (predictStock) and summarize its news with sentiment (getNews).
 - Show the user's paper portfolio (getPortfolio) and place simulated trades (placeTrade).
 
 Rules:

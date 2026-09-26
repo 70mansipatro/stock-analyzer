@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { Change } from "@/components/Change";
+import { Heatmap } from "@/components/Heatmap";
+import { AllocationDonut, PerformanceChart } from "@/components/PortfolioCharts";
+import { PortfolioReview } from "@/components/PortfolioReview";
 import { Card, ErrorNote, Stat } from "@/components/ui";
-import { compact, money, signedMoney } from "@/lib/format";
-import { getTopStocks, TOP_CATEGORY_LABELS, type StockRow, type TopCategory } from "@/lib/market";
+import { compact, money, pct, signedMoney } from "@/lib/format";
+import { getHeatmap, getTopStocks, TOP_CATEGORY_LABELS, type StockRow, type TopCategory } from "@/lib/market";
+import { getAllocation, getPerformance } from "@/lib/performance";
 import { getPortfolio } from "@/lib/trading";
 
 const CATEGORIES = Object.keys(TOP_CATEGORY_LABELS) as TopCategory[];
@@ -14,10 +18,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { list } = await searchParams;
   const category: TopCategory = CATEGORIES.includes(list as TopCategory) ? (list as TopCategory) : "most_actives";
 
-  const [portfolio, top] = await Promise.all([
+  const [portfolio, top, heatmap] = await Promise.all([
     getPortfolio(userId),
     getTopStocks(category, 15).catch(() => null as StockRow[] | null),
+    getHeatmap("US").catch(() => []),
   ]);
+  const [performance, allocation] = await Promise.all([
+    getPerformance(userId, portfolio).catch(() => null),
+    getAllocation(portfolio).catch(() => null),
+  ]);
+  const vsBench =
+    performance?.benchmarkReturnPct !== null && performance?.benchmarkReturnPct !== undefined
+      ? performance.portfolioReturnPct - performance.benchmarkReturnPct
+      : null;
 
   return (
     <div className="space-y-6">
@@ -36,6 +49,33 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           sub={<span className="text-slate-500">Realized {signedMoney(portfolio.realizedPnl)}</span>}
         />
       </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card
+          className="lg:col-span-2"
+          title="Performance vs S&P 500"
+          action={
+            vsBench !== null && (
+              <span className={`text-xs ${vsBench >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {vsBench >= 0 ? "▲ Beating" : "▼ Trailing"} the S&P 500 by {pct(Math.abs(vsBench)).replace(/^[+−]/, "")}
+              </span>
+            )
+          }
+        >
+          <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} />
+        </Card>
+        <Card title="Allocation">
+          <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" />
+        </Card>
+      </div>
+
+      <Card title="Market heatmap">
+        <Heatmap initial={heatmap} />
+      </Card>
+
+      <Card title="AI portfolio review" className="border-sky-900/60 bg-gradient-to-br from-slate-900/80 to-sky-950/30">
+        <PortfolioReview hasHoldings={portfolio.positions.length > 0} />
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card

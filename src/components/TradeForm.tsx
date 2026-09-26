@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { placeOrderAction, type TradeState } from "@/app/actions";
 import { money } from "@/lib/format";
+import { toast } from "@/lib/toast";
 
 export function TradeForm({
   symbol,
@@ -28,6 +29,7 @@ export function TradeForm({
   const [state, action, pending] = useActionState<TradeState, FormData>(async (prev, fd) => {
     const res = await placeOrderAction(prev, fd);
     setConfirming(false);
+    if (res) toast(res.ok ? "success" : "error", res.ok ? "Order filled" : "Order not placed", res.message);
     return res;
   }, null);
 

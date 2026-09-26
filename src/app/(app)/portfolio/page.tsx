@@ -1,14 +1,21 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { Change } from "@/components/Change";
+import { AllocationDonut, PerformanceChart } from "@/components/PortfolioCharts";
+import { PortfolioReview } from "@/components/PortfolioReview";
 import { Card, Stat } from "@/components/ui";
-import { money, signedMoney } from "@/lib/format";
+import { money, pct, signedMoney } from "@/lib/format";
+import { getAllocation, getPerformance } from "@/lib/performance";
 import { getPortfolio, getRecentTrades } from "@/lib/trading";
 
 export default async function PortfolioPage() {
   const session = await auth();
   const userId = session!.user.id;
   const [p, trades] = await Promise.all([getPortfolio(userId), getRecentTrades(userId, 50)]);
+  const [performance, allocation] = await Promise.all([
+    getPerformance(userId, p).catch(() => null),
+    getAllocation(p).catch(() => null),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -27,6 +34,29 @@ export default async function PortfolioPage() {
           sub={<span className="text-slate-400">Realized {signedMoney(p.realizedPnl)}</span>}
         />
       </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2" title="Performance vs S&P 500">
+          <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} />
+          {performance?.benchmarkReturnPct !== null && performance?.benchmarkReturnPct !== undefined && (
+            <p className="mt-2 text-xs text-slate-400">
+              Since your first trade: you {pct(performance.portfolioReturnPct)} · S&amp;P 500 {pct(performance.benchmarkReturnPct)}
+            </p>
+          )}
+        </Card>
+        <div className="space-y-6">
+          <Card title="By holding">
+            <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" />
+          </Card>
+          <Card title="By sector">
+            <AllocationDonut slices={allocation?.bySector ?? []} title="Top sector" />
+          </Card>
+        </div>
+      </div>
+
+      <Card title="AI portfolio review" className="border-sky-900/60 bg-gradient-to-br from-slate-900/80 to-sky-950/30">
+        <PortfolioReview hasHoldings={p.positions.length > 0} />
+      </Card>
 
       <Card title={`Holdings (${p.positions.length})`}>
         {p.positions.length === 0 ? (

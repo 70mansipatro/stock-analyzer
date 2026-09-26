@@ -13,7 +13,8 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   return value;
 }
 
-export const SYMBOL_RE = /^[A-Z0-9][A-Z0-9.\-^=]{0,14}$/;
+// Letters/digits plus . - = & (e.g. BRK-B, RRKABEL.NS, INR=X, M&M.NS); indices start with ^ (e.g. ^GSPC).
+export const SYMBOL_RE = /^\^?[A-Z0-9][A-Z0-9.\-=&]{0,14}$/;
 
 export function normalizeSymbol(raw: string): string {
   const symbol = raw.trim().toUpperCase();
@@ -209,4 +210,197 @@ export async function resolveSymbol(text: string): Promise<string | null> {
   }
   const hits = await searchSymbols(raw).catch(() => []);
   return hits[0]?.symbol ?? null;
+}
+
+// ---------- Market overview (indices, commodities, crypto, FX) ----------
+
+export const OVERVIEW_SYMBOLS: { symbol: string; label: string }[] = [
+  { symbol: "^GSPC", label: "S&P 500" },
+  { symbol: "^IXIC", label: "NASDAQ" },
+  { symbol: "^DJI", label: "Dow Jones" },
+  { symbol: "^NSEI", label: "NIFTY 50" },
+  { symbol: "^BSESN", label: "SENSEX" },
+  { symbol: "GC=F", label: "Gold" },
+  { symbol: "CL=F", label: "Crude oil" },
+  { symbol: "BTC-USD", label: "Bitcoin" },
+  { symbol: "INR=X", label: "USD/INR" },
+];
+
+export type OverviewItem = { symbol: string; label: string; price: number; changePercent: number; currency: string };
+
+export async function getMarketOverview(): Promise<OverviewItem[]> {
+  return cached("overview", 60_000, async () => {
+    const quotes = await yf.quote(OVERVIEW_SYMBOLS.map((s) => s.symbol));
+    const bySymbol = new Map(quotes.map((q) => [q.symbol, q]));
+    return OVERVIEW_SYMBOLS.flatMap(({ symbol, label }) => {
+      const q = bySymbol.get(symbol);
+      if (!q || typeof q.regularMarketPrice !== "number") return [];
+      return [{ symbol, label, price: q.regularMarketPrice, changePercent: q.regularMarketChangePercent ?? 0, currency: q.currency ?? "USD" }];
+    });
+  });
+}
+
+// ---------- Heatmap universes (large caps grouped by sector) ----------
+
+const HEATMAP_UNIVERSE: Record<"US" | "IN", Record<string, string[]>> = {
+  US: {
+    Technology: ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "AMD", "ADBE", "INTC", "CSCO"],
+    Communication: ["GOOGL", "META", "NFLX", "DIS", "T", "VZ"],
+    "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX"],
+    Financial: ["JPM", "V", "MA", "BAC", "WFC", "GS"],
+    Healthcare: ["LLY", "UNH", "JNJ", "ABBV", "MRK", "PFE"],
+    "Consumer Defensive": ["WMT", "PG", "KO", "PEP", "COST"],
+    Energy: ["XOM", "CVX", "COP"],
+    Industrials: ["GE", "CAT", "BA", "UPS"],
+  },
+  IN: {
+    Financial: ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS", "BAJFINANCE.NS"],
+    Technology: ["TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS"],
+    Energy: ["RELIANCE.NS", "ONGC.NS", "NTPC.NS", "POWERGRID.NS"],
+    "Consumer Defensive": ["HINDUNILVR.NS", "ITC.NS", "NESTLEIND.NS"],
+    "Consumer Cyclical": ["MARUTI.NS", "M&M.NS", "TITAN.NS"],
+    Industrials: ["LT.NS", "ADANIPORTS.NS"],
+    Materials: ["TATASTEEL.NS", "JSWSTEEL.NS", "ULTRACEMCO.NS"],
+    Healthcare: ["SUNPHARMA.NS", "DRREDDY.NS"],
+    Communication: ["BHARTIARTL.NS"],
+  },
+};
+
+export type HeatmapTile = {
+  symbol: string;
+  name: string;
+  sector: string;
+  price: number;
+  changePercent: number;
+  marketCap: number;
+  currency: string;
+};
+
+export async function getHeatmap(region: "US" | "IN"): Promise<HeatmapTile[]> {
+  return cached(`heatmap:${region}`, 2 * 60_000, async () => {
+    const sectorOf = new Map<string, string>();
+    for (const [sector, symbols] of Object.entries(HEATMAP_UNIVERSE[region])) symbols.forEach((s) => sectorOf.set(s, sector));
+    const quotes = await yf.quote([...sectorOf.keys()]);
+    return quotes
+      .filter((q) => typeof q.regularMarketPrice === "number" && typeof q.marketCap === "number")
+      .map((q) => ({
+        symbol: q.symbol,
+        name: q.shortName ?? q.symbol,
+        sector: sectorOf.get(q.symbol) ?? "Other",
+        price: q.regularMarketPrice as number,
+        changePercent: q.regularMarketChangePercent ?? 0,
+        marketCap: q.marketCap as number,
+        currency: q.currency ?? "USD",
+      }));
+  });
+}
+
+// ---------- Candles for the pro chart ----------
+
+export const CHART_RANGES = ["1D", "5D", "1M", "6M", "1Y", "5Y"] as const;
+export type ChartRange = (typeof CHART_RANGES)[number];
+
+const RANGE_CONFIG: Record<ChartRange, { days: number; interval: "5m" | "15m" | "1d" | "1wk"; intraday: boolean }> = {
+  "1D": { days: 4, interval: "5m", intraday: true },
+  "5D": { days: 8, interval: "15m", intraday: true },
+  "1M": { days: 32, interval: "1d", intraday: false },
+  "6M": { days: 184, interval: "1d", intraday: false },
+  "1Y": { days: 366, interval: "1d", intraday: false },
+  "5Y": { days: 5 * 366, interval: "1wk", intraday: false },
+};
+
+/** `time` is unix seconds for intraday bars and YYYY-MM-DD for daily/weekly bars. */
+export type Candle = { time: number | string; open: number; high: number; low: number; close: number; volume: number };
+
+export async function getCandles(rawSymbol: string, range: ChartRange): Promise<{ candles: Candle[]; intraday: boolean }> {
+  const symbol = normalizeSymbol(rawSymbol);
+  const cfg = RANGE_CONFIG[range];
+  return cached(`candles:${symbol}:${range}`, cfg.intraday ? 60_000 : 10 * 60_000, async () => {
+    const result = await yf.chart(symbol, {
+      period1: new Date(Date.now() - cfg.days * 86_400_000),
+      interval: cfg.interval,
+      includePrePost: false,
+    });
+    let bars = result.quotes.filter(
+      (b) => [b.open, b.high, b.low, b.close].every((v) => typeof v === "number") && (b.high as number) > 0,
+    );
+    if (range === "1D" && bars.length) {
+      // Keep only the latest trading session.
+      const lastDay = bars[bars.length - 1].date.toISOString().slice(0, 10);
+      bars = bars.filter((b) => b.date.toISOString().slice(0, 10) === lastDay);
+    }
+    const candles = bars.map((b) => ({
+      time: cfg.intraday ? Math.floor(b.date.getTime() / 1000) : b.date.toISOString().slice(0, 10),
+      open: b.open as number,
+      high: b.high as number,
+      low: b.low as number,
+      close: b.close as number,
+      volume: b.volume ?? 0,
+    }));
+    // Daily keys must be unique and ascending for the chart.
+    const seen = new Set<string | number>();
+    return { candles: candles.filter((c) => (seen.has(c.time) ? false : (seen.add(c.time), true))), intraday: cfg.intraday };
+  });
+}
+
+// ---------- Company sector (for portfolio allocation) ----------
+
+export async function getSector(rawSymbol: string): Promise<string> {
+  const symbol = normalizeSymbol(rawSymbol);
+  return cached(`sector:${symbol}`, 24 * 3600_000, async () => {
+    try {
+      const r = await yf.quoteSummary(symbol, { modules: ["assetProfile"] });
+      return r.assetProfile?.sector || "Other";
+    } catch {
+      return "Other";
+    }
+  });
+}
+
+// ---------- News headlines ----------
+
+export type NewsItem = { id: string; title: string; publisher: string; link: string; publishedAt: string; thumbnail: string | null };
+
+/**
+ * Headlines for a stock. Yahoo's search mixes in general market stories, so this queries by ticker and by
+ * company name, then ranks stories whose headline names the company, then stories tagged with the ticker.
+ */
+export async function getNews(rawSymbol: string, count = 8, companyName?: string): Promise<NewsItem[]> {
+  const symbol = normalizeSymbol(rawSymbol);
+  return cached(`news:${symbol}:${count}`, 15 * 60_000, async () => {
+    const name = (companyName ?? "")
+      .replace(/\b(inc|incorporated|corp|corporation|ltd|limited|plc|co|company|holdings?|group|class [a-z])\b\.?/gi, "")
+      .replace(/[,.]+/g, " ")
+      .trim();
+    const queries = [symbol, ...(name && name.toUpperCase() !== symbol ? [name] : [])];
+    const results = await Promise.all(queries.map((q) => yf.search(q, { quotesCount: 0, newsCount: 20 }).catch(() => ({ news: [] }))));
+    const unique = new Map<string, (typeof results)[number]["news"][number]>();
+    results.flatMap((r) => r.news).forEach((n) => unique.has(n.uuid) || unique.set(n.uuid, n));
+
+    const base = symbol.split(".")[0];
+    const firstWord = name.split(/\s+/)[0]?.toLowerCase() ?? "";
+    const score = (n: { title: string; relatedTickers?: string[] }) => {
+      const title = n.title.toLowerCase();
+      const tickers = n.relatedTickers ?? [];
+      return (
+        (firstWord.length > 2 && title.includes(firstWord) ? 4 : 0) +
+        (title.includes(base.toLowerCase()) ? 2 : 0) +
+        (tickers[0] === symbol ? 2 : tickers.some((t) => t === symbol || t.split(".")[0] === base) ? 1 : 0)
+      );
+    };
+    const ranked = [...unique.values()]
+      .map((n) => ({ n, s: score(n) }))
+      .sort((a, b) => b.s - a.s || new Date(b.n.providerPublishTime).getTime() - new Date(a.n.providerPublishTime).getTime())
+      .slice(0, count)
+      .map(({ n }) => n);
+
+    return ranked.map((n) => ({
+      id: n.uuid,
+      title: n.title,
+      publisher: n.publisher,
+      link: n.link,
+      publishedAt: new Date(n.providerPublishTime).toISOString(),
+      thumbnail: n.thumbnail?.resolutions?.find((t) => t.width >= 140)?.url ?? n.thumbnail?.resolutions?.[0]?.url ?? null,
+    }));
+  });
 }

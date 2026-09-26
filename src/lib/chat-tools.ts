@@ -3,6 +3,7 @@ import { tool, type InferUITools, type ToolApprovalConfiguration, type UIMessage
 import { z } from "zod";
 import { analyzeStock } from "@/lib/analysis";
 import { getQuote, getTopStocks, MarketError, searchSymbols, TOP_CATEGORY_LABELS, type TopCategory } from "@/lib/market";
+import { getNewsInsight } from "@/lib/insights";
 import { predictStock } from "@/lib/prediction";
 import { executeOrder, getPortfolio, LIMITS, TradeError, validateOrder } from "@/lib/trading";
 import { audit } from "@/lib/audit";
@@ -11,7 +12,7 @@ const symbolField = z
   .string()
   .min(1)
   .max(15)
-  .regex(/^[A-Za-z0-9.\-^=]+$/, "Ticker symbols only contain letters, digits, '.', '-', '^' or '='")
+  .regex(/^[A-Za-z0-9.\-^=&]+$/, "Ticker symbols only contain letters, digits, '.', '-', '^', '=' or '&'")
   .describe("Ticker symbol, e.g. AAPL. Use searchStocks first if you only know the company name.");
 
 /** Turns expected errors into a result the model can explain instead of crashing the stream. */
@@ -81,6 +82,12 @@ export function buildTools(userId: string) {
         type: "json",
         value: "error" in output ? output : { ...output, history: undefined, forecast: undefined },
       }),
+    }),
+
+    getNews: tool({
+      description: "Latest news headlines for a stock, each labelled positive, negative or neutral by AI, with an overall tone.",
+      inputSchema: z.object({ symbol: symbolField }),
+      execute: ({ symbol }) => safe(() => getNewsInsight(symbol)),
     }),
 
     getPortfolio: tool({

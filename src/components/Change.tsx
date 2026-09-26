@@ -5,7 +5,7 @@ export function Change({ value, percent, currency }: { value?: number | null; pe
   const basis = percent ?? value ?? 0;
   const up = basis >= 0;
   return (
-    <span className={up ? "text-emerald-400" : "text-red-400"}>
+    <span className={`whitespace-nowrap ${up ? "text-emerald-400" : "text-red-400"}`}>
       <span aria-hidden>{up ? "▲" : "▼"}</span>{" "}
       {value !== undefined && value !== null && signedMoney(value, currency)}
       {value !== undefined && value !== null && percent !== undefined && percent !== null && " "}

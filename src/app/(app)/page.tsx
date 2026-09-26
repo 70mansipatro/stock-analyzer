@@ -1,172 +1,208 @@
+import { Activity, ArrowRight, Briefcase, Flame, LineChart, PieChart, Sparkles, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import Link from "next/link";
+import { AssistantMark } from "@/components/AssistantMark";
 import { auth } from "@/auth";
 import { Change } from "@/components/Change";
-import { Heatmap } from "@/components/Heatmap";
 import { AllocationDonut, PerformanceChart } from "@/components/PortfolioCharts";
 import { PortfolioReview } from "@/components/PortfolioReview";
-import { Card, ErrorNote, Stat } from "@/components/ui";
-import { compact, money, pct, signedMoney } from "@/lib/format";
-import { getHeatmap, getTopStocks, TOP_CATEGORY_LABELS, type StockRow, type TopCategory } from "@/lib/market";
+import { Card, ErrorNote, PageHeader, Stat } from "@/components/ui";
+import { money, pct, signedMoney } from "@/lib/format";
+import { getTopStocks, type StockRow, type TopCategory } from "@/lib/market";
 import { getAllocation, getPerformance } from "@/lib/performance";
 import { getPortfolio } from "@/lib/trading";
 
-const CATEGORIES = Object.keys(TOP_CATEGORY_LABELS) as TopCategory[];
+const MOVERS: { id: TopCategory; title: string; icon: typeof Flame; tone: "emerald" | "rose" | "amber" }[] = [
+  { id: "day_gainers", title: "Top gainers", icon: TrendingUp, tone: "emerald" },
+  { id: "day_losers", title: "Top losers", icon: TrendingDown, tone: "rose" },
+  { id: "most_actives", title: "Most active", icon: Flame, tone: "amber" },
+];
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ list?: string }> }) {
+const PROMPTS = ["What are today's top gainers?", "Analyze NVDA", "What's the news on Tesla?", "Review my portfolio risk"];
+
+export default async function Dashboard() {
   const session = await auth();
-  const userId = session!.user.id;
-  const { list } = await searchParams;
-  const category: TopCategory = CATEGORIES.includes(list as TopCategory) ? (list as TopCategory) : "most_actives";
-
-  const [portfolio, top, heatmap] = await Promise.all([
-    getPortfolio(userId),
-    getTopStocks(category, 15).catch(() => null as StockRow[] | null),
-    getHeatmap("US").catch(() => []),
-  ]);
-  const [performance, allocation] = await Promise.all([
-    getPerformance(userId, portfolio).catch(() => null),
+  const user = session!.user;
+  const portfolio = await getPortfolio(user.id);
+  const [performance, allocation, ...movers] = await Promise.all([
+    getPerformance(user.id, portfolio).catch(() => null),
     getAllocation(portfolio).catch(() => null),
+    ...MOVERS.map((m) => getTopStocks(m.id, 5).catch(() => null as StockRow[] | null)),
   ]);
+
+  const series = performance?.points.map((p) => p.portfolio) ?? [];
+  const up = portfolio.totalReturnPct >= 0;
   const vsBench =
     performance?.benchmarkReturnPct !== null && performance?.benchmarkReturnPct !== undefined
       ? performance.portfolioReturnPct - performance.benchmarkReturnPct
       : null;
+  const best = [...portfolio.positions].sort((a, b) => (b.unrealizedPnlPct ?? -1e9) - (a.unrealizedPnlPct ?? -1e9))[0];
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Hi, {session!.user.name?.split(" ")[0] ?? "there"}</h1>
-        <p className="text-sm text-slate-400">Your paper portfolio and today&apos;s market movers.</p>
-      </div>
+      <PageHeader
+        title={
+          <>
+            Welcome back, <span className="text-gradient">{user.name?.split(" ")[0] ?? "trader"}</span>
+          </>
+        }
+        subtitle={`${today} · Your paper portfolio at a glance`}
+      >
+        <div className="flex gap-2">
+          <Link href="/markets" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-slate-200 transition hover:border-white/20">
+            <Activity className="h-4 w-4 text-sky-300" /> Markets
+          </Link>
+          <Link
+            href="/assistant"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110"
+          >
+            <AssistantMark className="h-4.5 w-4.5" /> Ask AI
+          </Link>
+        </div>
+      </PageHeader>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Stat label="Total value" value={money(portfolio.totalValue)} sub={<Change percent={portfolio.totalReturnPct} />} />
-        <Stat label="Cash" value={money(portfolio.cash)} sub={<span className="text-slate-500">of {money(portfolio.startingCash)} starting</span>} />
-        <Stat label="Invested" value={money(portfolio.investedValue)} sub={<span className="text-slate-500">{portfolio.positions.length} positions</span>} />
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <Stat label="Portfolio value" icon={Wallet} tone="emerald" value={money(portfolio.totalValue)} sub={<Change percent={portfolio.totalReturnPct} />} trend={{ values: series, up }} />
         <Stat
           label="Unrealized P&L"
-          value={<span className={portfolio.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}>{signedMoney(portfolio.unrealizedPnl)}</span>}
+          icon={LineChart}
+          tone={portfolio.unrealizedPnl >= 0 ? "emerald" : "rose"}
+          value={<span className={portfolio.unrealizedPnl >= 0 ? "text-emerald-300" : "text-red-300"}>{signedMoney(portfolio.unrealizedPnl)}</span>}
           sub={<span className="text-slate-500">Realized {signedMoney(portfolio.realizedPnl)}</span>}
+        />
+        <Stat
+          label="vs S&P 500"
+          icon={Activity}
+          tone="sky"
+          value={vsBench === null ? "—" : <span className={vsBench >= 0 ? "text-emerald-300" : "text-red-300"}>{pct(vsBench)}</span>}
+          sub={<span className="text-slate-500">{vsBench === null ? "After your first trade" : vsBench >= 0 ? "Beating the index" : "Trailing the index"}</span>}
+        />
+        <Stat
+          label="Best holding"
+          icon={Briefcase}
+          tone="violet"
+          value={best ? best.symbol.replace(/\.NS$/, "") : "—"}
+          sub={best ? <Change percent={best.unrealizedPnlPct} /> : <span className="text-slate-500">No holdings yet</span>}
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card
-          className="lg:col-span-2"
-          title="Performance vs S&P 500"
-          action={
-            vsBench !== null && (
-              <span className={`text-xs ${vsBench >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {vsBench >= 0 ? "▲ Beating" : "▼ Trailing"} the S&P 500 by {pct(Math.abs(vsBench)).replace(/^[+−]/, "")}
-              </span>
-            )
-          }
-        >
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="xl:col-span-2" title="Performance" subtitle="Account value vs the S&P 500 from the same $100k start" icon={LineChart} tone="sky">
           <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} />
         </Card>
-        <Card title="Allocation">
+        <Card title="Allocation" subtitle={`${portfolio.positions.length} positions + cash`} icon={PieChart} tone="violet">
           <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" />
         </Card>
       </div>
 
-      <Card title="Market heatmap">
-        <Heatmap initial={heatmap} />
-      </Card>
-
-      <Card title="AI portfolio review" className="border-sky-900/60 bg-gradient-to-br from-slate-900/80 to-sky-950/30">
-        <PortfolioReview hasHoldings={portfolio.positions.length > 0} />
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 xl:grid-cols-3">
         <Card
-          className="lg:col-span-2"
-          title="Top stocks today"
-          action={
-            <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
-              {CATEGORIES.map((c) => (
-                <Link
-                  key={c}
-                  href={`/?list=${c}`}
-                  scroll={false}
-                  className={`rounded-md px-3 py-1 text-xs ${c === category ? "bg-slate-950 text-white" : "text-slate-400 hover:text-slate-200"}`}
-                >
-                  {TOP_CATEGORY_LABELS[c]}
-                </Link>
-              ))}
-            </div>
-          }
+          className="relative overflow-hidden xl:col-span-2"
+          title="AI portfolio review"
+          subtitle="Risk score, diversification and ideas from Gemini"
+          icon={Sparkles}
+          tone="sky"
         >
-          {!top ? (
-            <ErrorNote>Market data is unavailable right now. Try again in a minute.</ErrorNote>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs text-slate-500">
-                  <tr>
-                    <th className="pb-2 font-normal">Symbol</th>
-                    <th className="pb-2 text-right font-normal">Price</th>
-                    <th className="pb-2 text-right font-normal">Change</th>
-                    <th className="hidden pb-2 text-right font-normal sm:table-cell">Volume</th>
-                    <th className="hidden pb-2 text-right font-normal md:table-cell">Market cap</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {top.map((s) => (
-                    <tr key={s.symbol} className="hover:bg-slate-800/40">
-                      <td className="py-2">
-                        <Link href={`/stock/${encodeURIComponent(s.symbol)}`} className="block">
-                          <span className="font-medium text-slate-100">{s.symbol}</span>
-                          <span className="block max-w-[14rem] truncate text-xs text-slate-500">{s.name}</span>
-                        </Link>
-                      </td>
-                      <td className="py-2 text-right tabular-nums">{money(s.price)}</td>
-                      <td className="py-2 text-right tabular-nums"><Change percent={s.changePercent} /></td>
-                      <td className="hidden py-2 text-right tabular-nums text-slate-400 sm:table-cell">{compact(s.volume)}</td>
-                      <td className="hidden py-2 text-right tabular-nums text-slate-400 md:table-cell">{compact(s.marketCap)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div aria-hidden className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl" />
+          <PortfolioReview hasHoldings={portfolio.positions.length > 0} />
         </Card>
 
-        <div className="space-y-6">
-          <Card title="Your holdings" action={<Link href="/portfolio" className="text-xs text-emerald-400 hover:underline">View all</Link>}>
-            {portfolio.positions.length === 0 ? (
-              <p className="text-sm text-slate-400">
-                No holdings yet. Open any stock and buy with your {money(portfolio.cash)} of virtual cash.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-800 text-sm">
-                {portfolio.positions.slice(0, 6).map((p) => (
-                  <li key={p.symbol} className="flex items-center justify-between py-2">
-                    <Link href={`/stock/${encodeURIComponent(p.symbol)}`}>
-                      <span className="font-medium">{p.symbol}</span>
-                      <span className="block text-xs text-slate-500">{p.quantity} {p.quantity === 1 ? "share" : "shares"}</span>
-                    </Link>
-                    <div className="text-right tabular-nums">
-                      <div>{money(p.marketValue)}</div>
-                      <div className="text-xs"><Change percent={p.unrealizedPnlPct} /></div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <Card title="Ask the AI assistant">
-            <p className="mb-3 text-sm text-slate-400">Analyze, forecast or trade by chatting.</p>
-            <div className="flex flex-col gap-2">
-              {["What are today's top gainers?", "Analyze NVDA", "Forecast AAPL for 30 days", "Buy 5 shares of MSFT"].map((q) => (
-                <Link key={q} href={`/assistant?q=${encodeURIComponent(q)}`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">
-                  {q}
-                </Link>
+        <Card
+          title="Holdings"
+          icon={Briefcase}
+          tone="emerald"
+          action={
+            <Link href="/portfolio" className="flex items-center gap-1 text-xs text-emerald-300 hover:underline">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          }
+        >
+          {portfolio.positions.length === 0 ? (
+            <p className="text-sm text-slate-400">No holdings yet. Open any stock and buy with your {money(portfolio.cash)} of virtual cash.</p>
+          ) : (
+            <ul className="space-y-1">
+              {portfolio.positions.slice(0, 5).map((p) => (
+                <li key={p.symbol}>
+                  <Link href={`/stock/${encodeURIComponent(p.symbol)}`} className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-white/[0.04]">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 text-xs font-semibold text-slate-200">
+                      {p.symbol.replace(/\.NS$/, "").slice(0, 4)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{p.name}</span>
+                      <span className="block text-xs text-slate-500">
+                        {p.quantity} {p.quantity === 1 ? "share" : "shares"}
+                      </span>
+                    </span>
+                    <span className="text-right tabular-nums">
+                      <span className="block text-sm">{money(p.marketValue)}</span>
+                      <span className="block text-xs">
+                        <Change percent={p.unrealizedPnlPct} />
+                      </span>
+                    </span>
+                  </Link>
+                </li>
               ))}
-            </div>
-          </Card>
-        </div>
+            </ul>
+          )}
+        </Card>
       </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {MOVERS.map((m, i) => {
+          const rows = movers[i];
+          return (
+            <Card
+              key={m.id}
+              title={m.title}
+              icon={m.icon}
+              tone={m.tone}
+              action={
+                <Link href="/markets" className="text-xs text-slate-400 hover:text-white">
+                  More
+                </Link>
+              }
+            >
+              {!rows ? (
+                <ErrorNote>Market data is unavailable right now.</ErrorNote>
+              ) : (
+                <ul className="space-y-0.5">
+                  {rows.map((s) => (
+                    <li key={s.symbol}>
+                      <Link href={`/stock/${encodeURIComponent(s.symbol)}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition hover:bg-white/[0.04]">
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">{s.symbol}</span>
+                          <span className="block truncate text-xs text-slate-500">{s.name}</span>
+                        </span>
+                        <span className="text-right tabular-nums">
+                          <span className="block text-sm">{money(s.price)}</span>
+                          <span className="block text-xs">
+                            <Change percent={s.changePercent} />
+                          </span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card title="Try the AI assistant" subtitle="Click a prompt, or use the chat button in the corner" icon={Sparkles} tone="violet">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {PROMPTS.map((q) => (
+            <Link
+              key={q}
+              href={`/assistant?q=${encodeURIComponent(q)}`}
+              className="glass flex items-center justify-between gap-2 rounded-xl px-3.5 py-3 text-sm text-slate-200 transition hover:border-violet-400/40"
+            >
+              {q}
+              <ArrowRight className="h-4 w-4 shrink-0 text-slate-500" />
+            </Link>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }

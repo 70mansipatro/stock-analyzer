@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+import { ArrowUp, ArrowUpRight, Square } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/chat-tools";
 import { compact, money, pct, signedMoney } from "@/lib/format";
 import { Change } from "@/components/Change";
+import { AssistantMark } from "@/components/AssistantMark";
 import { ForecastChart, PriceChart } from "@/components/charts";
 import { toast } from "@/lib/toast";
 
@@ -34,7 +36,7 @@ const TOOL_LABELS: Record<string, string> = {
   placeTrade: "Preparing order",
 };
 
-export function Chat({ initialQuestion }: { initialQuestion?: string }) {
+export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: string; variant?: "page" | "widget" }) {
   const router = useRouter();
   const [input, setInput] = useState("");
   const { messages, sendMessage, addToolApprovalResponse, status, stop, error, regenerate } = useChat<ChatMessage>({
@@ -79,19 +81,32 @@ export function Chat({ initialQuestion }: { initialQuestion?: string }) {
     setInput("");
   };
 
+  const widget = variant === "widget";
+  const suggestions = widget ? SUGGESTIONS.slice(0, 4) : SUGGESTIONS;
+
   return (
-    <div className="mx-auto flex h-[calc(100vh-11rem)] max-w-4xl flex-col">
-      <div className="flex-1 space-y-6 overflow-y-auto pb-4 pr-1">
+    <div className={widget ? "flex h-full flex-col" : "mx-auto flex h-[calc(100dvh-10rem)] max-w-4xl flex-col"}>
+      <div className={`flex-1 space-y-5 overflow-y-auto ${widget ? "px-4 py-4" : "pb-4 pr-1"}`}>
         {messages.length === 0 && (
-          <div className="pt-10 text-center">
-            <h1 className="text-2xl font-semibold">AI stock assistant</h1>
-            <p className="mt-2 text-sm text-slate-400">
-              Ask about top stocks, analysis, forecasts, your portfolio, or place a paper trade.
+          <div className={`text-center ${widget ? "pt-4" : "pt-12"}`}>
+            <span className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#0b1222] text-emerald-300 shadow-lg shadow-sky-500/20 ring-1 ring-white/10">
+              <AssistantMark className="h-9 w-9" animated />
+            </span>
+            <h2 className={`mt-4 font-semibold ${widget ? "text-lg" : "text-2xl"}`}>
+              How can I help with the markets<span className="text-gradient"> today?</span>
+            </h2>
+            <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">
+              Top stocks, analysis, forecasts, news sentiment, your portfolio, or a paper trade.
             </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => submit(s)} className="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800">
+            <div className={`mx-auto mt-6 grid gap-2 text-left ${widget ? "grid-cols-1" : "max-w-2xl sm:grid-cols-2"}`}>
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => submit(s)}
+                  className="glass flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 transition hover:border-emerald-400/40 hover:text-white"
+                >
                   {s}
+                  <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-500" />
                 </button>
               ))}
             </div>
@@ -101,22 +116,38 @@ export function Chat({ initialQuestion }: { initialQuestion?: string }) {
         {messages.map((m) =>
           m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-emerald-600/90 px-4 py-2 text-sm text-white">
+              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-gradient-to-br from-emerald-500 to-teal-600 px-4 py-2 text-sm text-white shadow-lg shadow-emerald-900/30">
                 {m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")}
               </div>
             </div>
           ) : (
-            <div key={m.id} className="space-y-3">
-              {m.parts.map((part, i) => (
-                <AssistantPart key={i} part={part} onApproval={addToolApprovalResponse} />
-              ))}
+            <div key={m.id} className="flex gap-3">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#0b1222] text-emerald-300 ring-1 ring-white/10">
+                <AssistantMark className="h-4.5 w-4.5" />
+              </span>
+              <div className="min-w-0 flex-1 space-y-3">
+                {m.parts.map((part, i) => (
+                  <AssistantPart key={i} part={part} onApproval={addToolApprovalResponse} />
+                ))}
+              </div>
             </div>
           ),
         )}
 
-        {status === "submitted" && <div className="text-sm text-slate-500">Thinking…</div>}
+        {status === "submitted" && (
+          <div className="flex items-center gap-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0b1222] text-emerald-300 ring-1 ring-white/10">
+              <AssistantMark className="h-4.5 w-4.5" animated />
+            </span>
+            <span className="flex gap-1" aria-label="Thinking">
+              {[0, 150, 300].map((d) => (
+                <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: `${d}ms` }} />
+              ))}
+            </span>
+          </div>
+        )}
         {error && (
-          <div className="flex items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <span>{error.message || "Something went wrong."}</span>
             <button onClick={() => regenerate()} className="shrink-0 underline">Retry</button>
           </div>
@@ -129,29 +160,33 @@ export function Chat({ initialQuestion }: { initialQuestion?: string }) {
           e.preventDefault();
           submit(input);
         }}
-        className="border-t border-slate-800 pt-4"
+        className={widget ? "border-t border-white/5 p-3" : "pt-3"}
       >
-        <div className="flex gap-2">
+        <div className="glass flex items-center gap-2 rounded-2xl p-1.5 pl-4 focus-within:border-emerald-400/50">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             maxLength={2000}
-            placeholder="Ask about a stock, or say “buy 10 shares of MSFT”"
-            className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+            placeholder={widget ? "Ask anything…" : "Ask about a stock, or say “buy 10 shares of MSFT”"}
+            className="min-w-0 flex-1 bg-transparent py-2 text-sm placeholder:text-slate-500 focus:outline-none"
+            aria-label="Message the AI assistant"
           />
           {busy ? (
-            <button type="button" onClick={() => stop()} className="rounded-xl border border-slate-600 px-4 text-sm hover:bg-slate-800">
-              Stop
+            <button type="button" onClick={() => stop()} aria-label="Stop" className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-700 text-white hover:bg-slate-600">
+              <Square className="h-3.5 w-3.5 fill-current" />
             </button>
           ) : (
-            <button type="submit" disabled={!input.trim()} className="rounded-xl bg-emerald-600 px-5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40">
-              Send
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              aria-label="Send"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-sky-500 text-white shadow-lg transition hover:brightness-110 disabled:opacity-30"
+            >
+              <ArrowUp className="h-4 w-4" />
             </button>
           )}
         </div>
-        <p className="mt-2 text-center text-xs text-slate-500">
-          AI can make mistakes. Paper trading only, no real money. Not financial advice.
-        </p>
+        <p className="mt-2 text-center text-[11px] text-slate-500">AI can make mistakes. Paper trading only. Not financial advice.</p>
       </form>
     </div>
   );
@@ -372,7 +407,7 @@ function TradePart({ part, onApproval }: { part: Extract<Part, { type: "tool-pla
 
 function ToolCard({ title, link, children }: { title: string; link?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="glass rounded-xl p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-medium capitalize-first text-slate-200">{title}</div>
         {link && <Link href={link} className="shrink-0 text-xs text-emerald-400 hover:underline">Open →</Link>}

@@ -1,4 +1,6 @@
+import { ArrowLeftRight, CandlestickChart, Gauge, ListChecks, Newspaper, Telescope } from "lucide-react";
 import Link from "next/link";
+import { AssistantMark } from "@/components/AssistantMark";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { Change } from "@/components/Change";
@@ -67,31 +69,34 @@ export default async function StockPage({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="text-sm text-slate-400">{q.exchange}</div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             {q.symbol} <span className="text-base font-normal text-slate-400">{q.name}</span>
           </h1>
           <div className="mt-1 flex items-baseline gap-3">
-            <span className="text-3xl font-semibold tabular-nums">{money(q.price, q.currency)}</span>
+            <span className="text-4xl font-semibold tracking-tight tabular-nums">{money(q.price, q.currency)}</span>
             {q.currency !== "USD" && <span className="text-sm tabular-nums text-slate-400">≈ {money(q.priceUsd)}</span>}
             <span className="tabular-nums"><Change value={q.change} percent={q.changePercent} currency={q.currency} /></span>
             {q.marketState && <span className="text-xs text-slate-500">{q.marketState === "REGULAR" ? "Market open" : "Market closed"}</span>}
           </div>
         </div>
-        <Link href={`/assistant?q=${encodeURIComponent(`Give me a full analysis and forecast of ${q.symbol}`)}`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">
-          Ask AI about {q.symbol}
+        <Link href={`/assistant?q=${encodeURIComponent(`Give me a full analysis and forecast of ${q.symbol}`)}`} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition hover:brightness-110">
+          <AssistantMark className="h-4.5 w-4.5" /> Ask AI about {q.symbol}
         </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Chart">
+          <Card title="Chart" subtitle="Candles, volume and indicators" icon={CandlestickChart} tone="sky">
             <CandleChart symbol={q.symbol} currency={q.currency} />
           </Card>
 
           <Card
-            title={`Forecast, next ${horizon} trading days`}
+            title={`Forecast · next ${horizon} trading days`}
+            subtitle="Statistical trend with a 90% range"
+            icon={Telescope}
+            tone="violet"
             action={
-              <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+              <div className="flex gap-1 rounded-lg bg-white/[0.04] p-1">
                 {HORIZONS.map((d) => (
                   <Link key={d} href={`?h=${d}`} scroll={false} className={`rounded-md px-2.5 py-1 text-xs ${d === horizon ? "bg-slate-950 text-white" : "text-slate-400 hover:text-slate-200"}`}>
                     {d}d
@@ -107,7 +112,7 @@ export default async function StockPage({
             )}
           </Card>
 
-          <Card title="Latest news · AI sentiment">
+          <Card title="Latest news" subtitle="Headlines labelled by Gemini" icon={Newspaper} tone="amber">
             <Suspense fallback={<NewsSkeleton />}>
               <NewsPanel symbol={q.symbol} />
             </Suspense>
@@ -115,7 +120,7 @@ export default async function StockPage({
         </div>
 
         <div className="space-y-6">
-          <Card title="Paper trade">
+          <Card title="Paper trade" subtitle="Virtual cash · live price" icon={ArrowLeftRight} tone="emerald">
             <TradeForm
               symbol={q.symbol}
               price={q.priceUsd}
@@ -127,7 +132,7 @@ export default async function StockPage({
             />
           </Card>
 
-          <Card title="Technical analysis">
+          <Card title="Technical analysis" icon={Gauge} tone="sky">
             <div className={`mb-4 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ${overall.cls}`}>
               <span aria-hidden>{overall.icon}</span> Overall: {overall.label} (score {analysis.score > 0 ? "+" : ""}{analysis.score})
             </div>
@@ -147,7 +152,7 @@ export default async function StockPage({
             </ul>
           </Card>
 
-          <Card title="Key stats">
+          <Card title="Key stats" icon={ListChecks} tone="slate">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               {[
                 ["Day range", `${num(q.dayLow)} – ${num(q.dayHigh)}`],

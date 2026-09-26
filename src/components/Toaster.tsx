@@ -27,7 +27,7 @@ export function Toaster() {
   }, []);
 
   return (
-    <div aria-live="polite" className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
+    <div aria-live="polite" className="pointer-events-none fixed right-4 top-4 z-[60] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
       {items.map((t) => {
         const s = STYLE[t.kind];
         return (

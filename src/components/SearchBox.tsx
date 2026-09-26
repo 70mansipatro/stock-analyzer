@@ -51,7 +51,7 @@ export function SearchBox() {
   };
 
   return (
-    <div ref={boxRef} className="relative w-full max-w-xs">
+    <div ref={boxRef} className="relative w-full max-w-md">
       <input
         value={q}
         onChange={(e) => {
@@ -73,7 +73,7 @@ export function SearchBox() {
           } else if (e.key === "Escape") setOpen(false);
         }}
         placeholder="Search stocks, e.g. Apple or NVDA"
-        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+        className="glass w-full rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400/50 focus:outline-none"
         aria-label="Search stocks"
       />
       {open && hits.length === 0 && searched === q.trim() && (
@@ -82,7 +82,7 @@ export function SearchBox() {
         </div>
       )}
       {open && hits.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+        <ul className="absolute z-40 mt-2 w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0f1c]/95 shadow-2xl backdrop-blur-xl">
           {hits.map((h, i) => (
             <li key={h.symbol}>
               <button

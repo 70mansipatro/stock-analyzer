@@ -16,8 +16,27 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
 // Letters/digits plus . - = & (e.g. BRK-B, RRKABEL.NS, INR=X, M&M.NS); indices start with ^ (e.g. ^GSPC).
 export const SYMBOL_RE = /^\^?[A-Z0-9][A-Z0-9.\-=&]{0,14}$/;
 
+// Google Finance / broker style exchange codes -> Yahoo suffix ("NSE: SWIGGY" -> "SWIGGY.NS").
+const EXCHANGE_SUFFIX: Record<string, string> = {
+  NSE: ".NS", NSEI: ".NS", BSE: ".BO", BOM: ".BO",
+  NASDAQ: "", NYSE: "", NYSEARCA: "", NYSEAMERICAN: "", AMEX: "", BATS: "", OTC: "", OTCMKTS: "",
+  LON: ".L", LSE: ".L", TSE: ".T", TYO: ".T", HKG: ".HK", HKEX: ".HK", TSX: ".TO", TSXV: ".V",
+  ASX: ".AX", FRA: ".F", ETR: ".DE", XETRA: ".DE", EPA: ".PA", AMS: ".AS", SWX: ".SW", SHA: ".SS", SHE: ".SZ",
+  KRX: ".KS", KOSDAQ: ".KQ", SGX: ".SI", TPE: ".TW",
+};
+
+/** Accepts "NSE: SWIGGY", "NSE:SWIGGY", "SWIGGY:NSE" and "nasdaq aapl"; returns Yahoo's form or the input unchanged. */
+export function fromExchangeNotation(raw: string): string {
+  const t = raw.trim().toUpperCase().replace(/\s+/g, " ");
+  let m = t.match(/^([A-Z]+)\s*[:\s]\s*([A-Z0-9.\-&]+)$/);
+  if (m && m[1] in EXCHANGE_SUFFIX) return m[2].replace(/\.(NS|BO)$/, "") + EXCHANGE_SUFFIX[m[1]];
+  m = t.match(/^([A-Z0-9.\-&]+)\s*:\s*([A-Z]+)$/);
+  if (m && m[2] in EXCHANGE_SUFFIX) return m[1] + EXCHANGE_SUFFIX[m[2]];
+  return raw.trim();
+}
+
 export function normalizeSymbol(raw: string): string {
-  const symbol = raw.trim().toUpperCase();
+  const symbol = fromExchangeNotation(raw).toUpperCase();
   if (!SYMBOL_RE.test(symbol)) throw new MarketError(`"${raw}" is not a valid ticker symbol.`);
   return symbol;
 }
@@ -177,7 +196,7 @@ export async function getHistory(rawSymbol: string, days = 400): Promise<Bar[]> 
 export type SearchHit = { symbol: string; name: string; exchange: string; type: string };
 
 export async function searchSymbols(query: string): Promise<SearchHit[]> {
-  const q = query.trim().slice(0, 50);
+  const q = fromExchangeNotation(query).slice(0, 50);
   if (!q) return [];
   return cached(`search:${q.toLowerCase()}`, 10 * 60_000, async () => {
     let result = await yf.search(q, { quotesCount: 8, newsCount: 0 });
@@ -202,7 +221,7 @@ export async function searchSymbols(query: string): Promise<SearchHit[]> {
  * Returns null when nothing matches.
  */
 export async function resolveSymbol(text: string): Promise<string | null> {
-  const raw = text.trim();
+  const raw = fromExchangeNotation(text);
   if (!raw) return null;
   if (SYMBOL_RE.test(raw.toUpperCase())) {
     const ok = await getQuote(raw).then(() => true, () => false);

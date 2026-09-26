@@ -1,8 +1,8 @@
 import { config } from "dotenv";
 import { defineConfig } from "prisma/config";
 
-// Next.js reads .env.local; load the same file for the Prisma CLI.
-config({ path: ".env.local" });
+// Match Next.js: .env.local wins, then .env (values already set are not overwritten).
+config({ path: [".env.local", ".env"], quiet: true });
 
 export default defineConfig({
   schema: "prisma/schema.prisma",

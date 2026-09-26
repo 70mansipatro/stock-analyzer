@@ -37,6 +37,21 @@ Stack: Next.js 16, Auth.js (Google), Postgres + Prisma 7, Vercel AI SDK 7 + Gemi
 
 View the database with `npm run db:studio` (http://localhost:5555).
 
+## Troubleshooting login
+
+**"Sign-in is misconfigured"** means Auth.js failed before reaching Google. Check the `[auth][error]` line in the `npm run dev` terminal:
+
+- `AdapterError` / `Can't reach database server`: Postgres isn't running, or the database in `DATABASE_URL` doesn't exist on this machine. Create it, then run `npx prisma migrate dev`. On Windows (psql or pgAdmin, as the `postgres` user):
+  ```sql
+  CREATE ROLE stockapp LOGIN PASSWORD 'choose-a-password' CREATEDB;
+  CREATE DATABASE stockapp OWNER stockapp;
+  ```
+- `MissingSecret`: the env file wasn't found. It must be named exactly `.env.local` or `.env` in the project root. On Windows, check it isn't `.env.txt` (File Explorer → View → Show → File name extensions).
+
+**"redirect_uri_mismatch"**: open the app at exactly `http://localhost:3000`, or add your URL to the OAuth client's redirect URIs.
+
+**"Access blocked" / AccessDenied**: while the Google app is in Testing mode, add your Gmail under Google Auth Platform → Audience → Test users.
+
 ## Guardrails
 
 | Layer | Where | What |

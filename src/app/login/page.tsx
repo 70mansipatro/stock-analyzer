@@ -37,8 +37,8 @@ function GoogleButton({ callbackUrl, large = false }: { callbackUrl?: string; la
     >
       <button
         type="submit"
-        className={`flex items-center justify-center gap-3 rounded-xl bg-white font-medium text-slate-900 shadow-lg shadow-emerald-500/10 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-950 ${
-          large ? "w-full px-6 py-3.5 text-base sm:w-auto" : "px-4 py-2 text-sm"
+        className={`flex items-center justify-center gap-3 rounded-xl border border-[#dadce0] bg-[#ffffff] font-medium text-[#1f1f1f] shadow-lg shadow-emerald-500/10 transition hover:bg-[#f8fafd] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-950 ${
+          large ? "w-full px-6 py-3.5 text-base" : "px-4 py-2 text-sm"
         }`}
       >
         <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden>
@@ -94,15 +94,15 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           {errorMessage && (
             <div className="mt-6 max-w-xl rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{errorMessage}</div>
           )}
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="mt-8 w-full max-w-md">
             <GoogleButton callbackUrl={callbackUrl} large />
-            <span className="text-sm text-slate-500">Free · Paper trading only · No real money</span>
           </div>
           {localLoginEnabled() && (
-            <div className="mt-5">
+            <div className="mt-4">
               <LocalLoginForm callbackUrl={callbackUrl} />
             </div>
           )}
+          <p className="mt-4 text-sm text-slate-400">Free · Paper trading only · No real money</p>
         </div>
 
         {/* Product preview */}

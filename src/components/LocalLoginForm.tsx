@@ -1,67 +1,56 @@
 "use client";
 
-import { KeyRound, LogIn } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, UserRound } from "lucide-react";
 import { useActionState, useState } from "react";
 import { localLogin, type LoginState } from "@/app/login/actions";
 
+const field =
+  "w-full rounded-xl border border-ink/15 bg-ink/[0.05] py-3 pl-11 pr-4 text-base text-slate-50 placeholder:text-slate-400 transition focus:border-emerald-400/70 focus:bg-ink/[0.08] focus:outline-none focus:ring-4 focus:ring-emerald-500/15";
+
+/** Username + password sign-in, always visible inside the sign-in card. */
 export function LocalLoginForm({ callbackUrl }: { callbackUrl?: string }) {
-  const [open, setOpen] = useState(false);
   // Controlled so the username survives React's form reset after a failed attempt.
   const [username, setUsername] = useState("");
+  const [show, setShow] = useState(false);
   const [state, action, pending] = useActionState<LoginState, FormData>(localLogin, null);
 
-  if (!open) {
-    return (
-      <div className="w-full max-w-md">
-        <div className="mb-4 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-slate-500">
-          <span className="h-px flex-1 bg-ink/10" /> or <span className="h-px flex-1 bg-ink/10" />
-        </div>
-        <button
-          onClick={() => setOpen(true)}
-          className="flex w-full items-center justify-center gap-3 rounded-xl border border-ink/15 bg-ink/[0.06] px-6 py-3.5 text-base font-medium text-slate-50 shadow-lg transition hover:border-emerald-400/50 hover:bg-ink/10 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        >
-          <KeyRound className="h-5 w-5 text-emerald-300" /> Sign in with username &amp; password
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <form action={action} className="glass w-full max-w-md space-y-3 rounded-2xl border-emerald-400/30 p-5">
+    <form action={action} className="space-y-3">
       <input type="hidden" name="callbackUrl" value={callbackUrl ?? "/"} />
-      <div className="flex items-center gap-2 text-base font-semibold text-slate-50">
-        <KeyRound className="h-5 w-5 text-emerald-300" /> Sign in with username
-      </div>
-      <input
-        name="username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        autoComplete="username"
-        required
-        autoFocus
-        placeholder="Username"
-        className="w-full rounded-xl border border-ink/10 bg-ink/[0.06] px-4 py-3 text-base placeholder:text-slate-400 text-slate-50 focus:border-emerald-400/60 focus:outline-none"
-      />
-      <input
-        name="password"
-        type="password"
-        autoComplete="current-password"
-        required
-        placeholder="Password"
-        className="w-full rounded-xl border border-ink/10 bg-ink/[0.06] px-4 py-3 text-base placeholder:text-slate-400 text-slate-50 focus:border-emerald-400/60 focus:outline-none"
-      />
-      {state?.error && <p className="text-sm text-red-400">{state.error}</p>}
-      <div className="flex items-center gap-2">
-        <button
-          disabled={pending}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-sky-500 px-4 py-3 text-base font-medium text-white shadow-lg transition hover:brightness-110 disabled:opacity-50"
-        >
-          <LogIn className="h-4 w-4" /> {pending ? "Signing in…" : "Sign in"}
-        </button>
-        <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-ink/15 px-4 py-2.5 text-sm text-slate-200 hover:bg-ink/5">
-          Cancel
-        </button>
-      </div>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-slate-200">Username</span>
+        <span className="relative block">
+          <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+          <input name="username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required placeholder="Enter your username" className={field} />
+        </span>
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-slate-200">Password</span>
+        <span className="relative block">
+          <Lock className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+          <input name="password" type={show ? "text" : "password"} autoComplete="current-password" required placeholder="Enter your password" className={`${field} pr-12`} />
+          <button
+            type="button"
+            onClick={() => setShow((s) => !s)}
+            aria-label={show ? "Hide password" : "Show password"}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 transition hover:bg-ink/10 hover:text-slate-100"
+          >
+            {show ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+          </button>
+        </span>
+      </label>
+      {state?.error && (
+        <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          {state.error}
+        </p>
+      )}
+      <button
+        disabled={pending}
+        className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-500/25 transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 disabled:opacity-60"
+      >
+        {pending ? "Signing in…" : "Sign in"}
+        {!pending && <ArrowRight className="h-4.5 w-4.5 transition group-hover:translate-x-0.5" />}
+      </button>
     </form>
   );
 }

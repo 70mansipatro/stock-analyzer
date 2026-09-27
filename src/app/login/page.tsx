@@ -94,15 +94,22 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           {errorMessage && (
             <div className="mt-6 max-w-xl rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{errorMessage}</div>
           )}
-          <div className="mt-8 w-full max-w-md">
-            <GoogleButton callbackUrl={callbackUrl} large />
-          </div>
-          {localLoginEnabled() && (
-            <div className="mt-4">
-              <LocalLoginForm callbackUrl={callbackUrl} />
+          <div className="glass mt-8 w-full max-w-md rounded-3xl p-6 sm:p-7">
+            <h2 className="text-xl font-semibold text-slate-50">Sign in</h2>
+            <p className="mt-1 text-sm text-slate-400">Start with $100,000 of virtual cash. No real money.</p>
+            <div className="mt-5">
+              <GoogleButton callbackUrl={callbackUrl} large />
             </div>
-          )}
-          <p className="mt-4 text-sm text-slate-400">Free · Paper trading only · No real money</p>
+            {localLoginEnabled() && (
+              <>
+                <div className="my-5 flex items-center gap-3 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                  <span className="h-px flex-1 bg-ink/15" /> or use your account <span className="h-px flex-1 bg-ink/15" />
+                </div>
+                <LocalLoginForm callbackUrl={callbackUrl} />
+              </>
+            )}
+          </div>
+          <p className="mt-4 text-sm text-slate-400">Free · Paper trading only · Not financial advice</p>
         </div>
 
         {/* Product preview */}
@@ -124,7 +131,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 </linearGradient>
               </defs>
               {[30, 65, 100].map((y) => (
-                <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="#1e293b" />
+                <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="var(--chart-grid)" />
               ))}
               <path d="M0 120 L30 112 L55 116 L80 98 L105 104 L130 86 L155 92 L180 72 L205 80 L230 62 L255 68 L280 50 L300 56 L320 40 L340 46 L360 30 L400 22 L400 150 L0 150 Z" fill="url(#hero-fill)" />
               <path className="animate-draw" d="M0 120 L30 112 L55 116 L80 98 L105 104 L130 86 L155 92 L180 72 L205 80 L230 62 L255 68 L280 50 L300 56 L320 40 L340 46 L360 30" fill="none" stroke="#3987e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />

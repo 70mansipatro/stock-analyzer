@@ -76,7 +76,7 @@ export function Sidebar({ user, signOutAction, cashLabel }: { user: User; signOu
       <div className="glass mt-8 rounded-2xl p-4">
         <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">Buying power</div>
         <div className="mt-1 text-lg font-semibold tabular-nums">{cashLabel}</div>
-        <p className="mt-1 text-xs text-slate-500">Virtual cash · paper trading</p>
+        <p className="mt-1 text-xs text-slate-500">Virtual money for practice</p>
       </div>
 
       <div className="mt-auto flex items-center gap-3 rounded-2xl border border-ink/5 bg-ink/[0.02] p-3">

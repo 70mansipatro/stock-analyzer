@@ -9,11 +9,12 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/chat-tools";
-import { compact, money, pct, signedMoney } from "@/lib/format";
+import { compact, money, pct } from "@/lib/format";
 import { Change } from "@/components/Change";
 import { AssistantMark } from "@/components/AssistantMark";
 import { ForecastChart, PriceChart } from "@/components/charts";
 import { toast } from "@/lib/toast";
+import { useCurrency } from "@/components/CurrencyProvider";
 import { clearAllChats, deleteChat, getChat, newChatId, saveChat, useChatHistory } from "@/lib/chat-history";
 
 type Part = ChatMessage["parts"][number];
@@ -126,7 +127,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
               How can I help with the markets<span className="text-gradient"> today?</span>
             </h2>
             <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">
-              Top stocks, analysis, forecasts, news sentiment, your portfolio, or a paper trade.
+              Top stocks, analysis, forecasts, news, your portfolio, or a practice trade.
             </p>
             <div className={`mx-auto mt-6 grid gap-2 text-left ${widget ? "grid-cols-1" : "max-w-2xl sm:grid-cols-2"}`}>
               {suggestions.map((s) => (
@@ -216,7 +217,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
             </button>
           )}
         </div>
-        <p className="mt-2 text-center text-[11px] text-slate-500">AI can make mistakes. Paper trading only. Not financial advice.</p>
+        <p className="mt-2 text-center text-[11px] text-slate-500">AI can make mistakes. Virtual money only. Not financial advice.</p>
       </form>
     </div>
   );
@@ -320,6 +321,7 @@ function ChatToolbar({
 type ApprovalFn = ReturnType<typeof useChat<ChatMessage>>["addToolApprovalResponse"];
 
 function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalFn }) {
+  const ccy = useCurrency();
   if (part.type === "text") {
     return (
       <div className="prose-chat text-sm leading-relaxed text-slate-200">
@@ -384,7 +386,7 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
             <Change value={q.change} percent={q.changePercent} currency={q.currency} />
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Market cap {compact(q.marketCap)} · 52w {money(q.fiftyTwoWeekLow)}–{money(q.fiftyTwoWeekHigh)}
+            Market cap {compact(q.marketCap)} · 52w {money(q.fiftyTwoWeekLow, q.currency)}–{money(q.fiftyTwoWeekHigh, q.currency)}
           </div>
         </ToolCard>
       );
@@ -411,8 +413,8 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
       return (
         <ToolCard title={`${f.symbol} forecast · ${f.horizonDays} trading days`} link={`/stock/${encodeURIComponent(f.symbol)}?h=${f.horizonDays}`}>
           <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-            <span>Trend: <b className="tabular-nums">{money(f.expectedPrice)}</b> <Change percent={f.expectedReturnPct} /></span>
-            <span>90% range: <b className="tabular-nums">{money(f.low90)} – {money(f.high90)}</b></span>
+            <span>Trend: <b className="tabular-nums">{money(f.expectedPrice, f.currency)}</b> <Change percent={f.expectedReturnPct} /></span>
+            <span>90% range: <b className="tabular-nums">{money(f.low90, f.currency)} – {money(f.high90, f.currency)}</b></span>
           </div>
           <ForecastChart history={f.history} forecast={f.forecast} compactHeight />
           <p className="mt-2 text-xs text-slate-500">{f.disclaimer}</p>
@@ -443,9 +445,9 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
       const pf = part.output as Exclude<typeof part.output, { error: string }> | undefined;
       if (!pf) return null;
       return (
-        <ToolCard title={`Portfolio · ${money(pf.totalValue)} (${pct(pf.totalReturnPct)})`} link="/portfolio">
+        <ToolCard title={`Portfolio · ${ccy.fmt(pf.totalValue)} (${pct(pf.totalReturnPct)})`} link="/portfolio">
           <div className="mb-2 text-xs text-slate-400">
-            Cash {money(pf.cash)} · Invested {money(pf.investedValue)} · Unrealized {signedMoney(pf.unrealizedPnl)}
+            Cash {ccy.fmt(pf.cash)} · Invested {ccy.fmt(pf.investedValue)} · Unrealized {ccy.signed(pf.unrealizedPnl)}
           </div>
           {pf.positions.length === 0 ? (
             <p className="text-sm text-slate-400">No holdings yet.</p>
@@ -456,7 +458,7 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
                   <tr key={pos.symbol}>
                     <td className="py-1.5 font-medium">{pos.symbol}</td>
                     <td className="py-1.5 text-right tabular-nums text-slate-400">{pos.quantity} sh</td>
-                    <td className="py-1.5 text-right tabular-nums">{money(pos.marketValue)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{ccy.fmt(pos.marketValue)}</td>
                     <td className="py-1.5 text-right tabular-nums"><Change value={pos.unrealizedPnl} percent={pos.unrealizedPnlPct} /></td>
                   </tr>
                 ))}
@@ -472,6 +474,7 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
 }
 
 function TradePart({ part, onApproval }: { part: Extract<Part, { type: "tool-placeTrade" }>; onApproval: ApprovalFn }) {
+  const ccy = useCurrency();
   const input = part.input;
   const label = input ? `${input.side === "BUY" ? "Buy" : "Sell"} ${input.quantity} ${input.symbol}` : "Order";
 
@@ -483,10 +486,10 @@ function TradePart({ part, onApproval }: { part: Extract<Part, { type: "tool-pla
       if (part.approval.isAutomatic) return <ToolPending label="Checking order" />;
       return (
         <div className="max-w-md rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-amber-300">Confirm paper trade</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-300">Confirm trade</div>
           <div className="mt-1 text-lg font-semibold">{label}</div>
           {part.approval.requestReason && <p className="mt-1 text-sm text-slate-300">{part.approval.requestReason}</p>}
-          <p className="mt-1 text-xs text-slate-500">Executes at the live price when you confirm. No real money.</p>
+          <p className="mt-1 text-xs text-slate-500">Runs at the live price when you confirm. Virtual money only.</p>
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => onApproval({ id: part.approval.id, approved: true })}
@@ -519,9 +522,9 @@ function TradePart({ part, onApproval }: { part: Extract<Part, { type: "tool-pla
       if ("error" in o) return <ToolError text={`${label} failed: ${o.error}`} />;
       return (
         <div className="max-w-md rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
-          <div className="font-medium text-emerald-300">✓ {o.side === "BUY" ? "Bought" : "Sold"} {o.quantity} {o.symbol} at {money(o.price)}</div>
+          <div className="font-medium text-emerald-300">✓ {o.side === "BUY" ? "Bought" : "Sold"} {o.quantity} {o.symbol} at {o.currency && o.currency !== "USD" ? money(o.localPrice, o.currency) : money(o.price)}</div>
           <div className="text-slate-400">
-            Total {money(o.total)} · Cash now {money(o.cashAfter)}
+            Total {ccy.fmt(o.total)} · Cash now {ccy.fmt(o.cashAfter)}
             {o.realizedPnl !== null && <> · Realized <Change value={o.realizedPnl} /></>}
           </div>
         </div>

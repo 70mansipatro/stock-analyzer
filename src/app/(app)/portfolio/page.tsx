@@ -5,14 +5,19 @@ import { Change } from "@/components/Change";
 import { AllocationDonut, PerformanceChart } from "@/components/PortfolioCharts";
 import { PortfolioReview } from "@/components/PortfolioReview";
 import { Card, PageHeader, Stat } from "@/components/ui";
-import { money, pct, signedMoney } from "@/lib/format";
+import { inCcy, signedInCcy } from "@/lib/display-currency";
+import { getDisplayCurrency } from "@/lib/display-currency-server";
+import { money, pct } from "@/lib/format";
 import { getAllocation, getPerformance } from "@/lib/performance";
 import { getPortfolio, getRecentTrades } from "@/lib/trading";
 
 export default async function PortfolioPage() {
   const session = await auth();
   const userId = session!.user.id;
-  const [p, trades] = await Promise.all([getPortfolio(userId), getRecentTrades(userId, 50)]);
+  const [p, trades, cur] = await Promise.all([getPortfolio(userId), getRecentTrades(userId, 50), getDisplayCurrency()]);
+  const m = (usd: number | null) => inCcy(usd, cur);
+  const sm = (usd: number) => signedInCcy(usd, cur);
+  const cv = (usd: number | null) => (usd === null ? null : usd * cur.rate);
   const [performance, allocation] = await Promise.all([
     getPerformance(userId, p).catch(() => null),
     getAllocation(p).catch(() => null),
@@ -20,24 +25,24 @@ export default async function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Portfolio" subtitle="Paper trading account in USD. Values use live market prices; non-USD stocks are converted at live exchange rates." />
+      <PageHeader title="Portfolio" subtitle="Your virtual trading account. Values use live market prices." />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Stat icon={Wallet} tone="emerald" label="Total value" value={money(p.totalValue)} sub={<Change value={p.totalValue - p.startingCash} percent={p.totalReturnPct} />} />
-        <Stat icon={Banknote} tone="sky" label="Cash" value={money(p.cash)} />
-        <Stat icon={Briefcase} tone="violet" label="Invested (market value)" value={money(p.investedValue)} sub={<span className="text-slate-500">Cost {money(p.costBasis)}</span>} />
+        <Stat icon={Wallet} tone="emerald" label="Total value" value={m(p.totalValue)} sub={<Change value={cv(p.totalValue - p.startingCash)} percent={p.totalReturnPct} currency={cur.code} />} />
+        <Stat icon={Banknote} tone="sky" label="Cash" value={m(p.cash)} />
+        <Stat icon={Briefcase} tone="violet" label="Invested (market value)" value={m(p.investedValue)} sub={<span className="text-slate-500">Cost {m(p.costBasis)}</span>} />
         <Stat
           icon={LineChart}
           tone="amber"
           label="Unrealized / realized P&L"
-          value={<span className={p.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}>{signedMoney(p.unrealizedPnl)}</span>}
-          sub={<span className="text-slate-400">Realized {signedMoney(p.realizedPnl)}</span>}
+          value={<span className={p.unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}>{sm(p.unrealizedPnl)}</span>}
+          sub={<span className="text-slate-400">Realized {sm(p.realizedPnl)}</span>}
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title="Performance" subtitle="Account value vs the S&P 500 from the same $100k start" icon={LineChart} tone="sky">
-          <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} />
+        <Card className="lg:col-span-2" title="Performance" subtitle="Account value vs the S&P 500 from the same starting cash" icon={LineChart} tone="sky">
+          <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} currency={cur.code} rate={cur.rate} />
           {performance?.benchmarkReturnPct !== null && performance?.benchmarkReturnPct !== undefined && (
             <p className="mt-2 text-xs text-slate-400">
               Since your first trade: you {pct(performance.portfolioReturnPct)} · S&amp;P 500 {pct(performance.benchmarkReturnPct)}
@@ -46,15 +51,15 @@ export default async function PortfolioPage() {
         </Card>
         <div className="space-y-6">
           <Card title="By holding" icon={PieChart} tone="violet">
-            <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" />
+            <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" currency={cur.code} rate={cur.rate} />
           </Card>
           <Card title="By sector" icon={Layers} tone="amber">
-            <AllocationDonut slices={allocation?.bySector ?? []} title="Top sector" />
+            <AllocationDonut slices={allocation?.bySector ?? []} title="Top sector" currency={cur.code} rate={cur.rate} />
           </Card>
         </div>
       </div>
 
-      <Card title="AI portfolio review" subtitle="Risk score, diversification and ideas from Gemini" icon={Sparkles} tone="sky">
+      <Card title="AI portfolio review" subtitle="Risk score, diversification and ideas from AI" icon={Sparkles} tone="sky">
         <PortfolioReview hasHoldings={p.positions.length > 0} />
       </Card>
 
@@ -88,14 +93,14 @@ export default async function PortfolioPage() {
                       </Link>
                     </td>
                     <td className="py-2 text-right tabular-nums">{pos.quantity}</td>
-                    <td className="py-2 text-right tabular-nums">{money(pos.avgCost)}</td>
+                    <td className="py-2 text-right tabular-nums">{m(pos.avgCost)}</td>
                     <td className="py-2 text-right tabular-nums">
-                      {money(pos.price)}
-                      {pos.currency !== "USD" && <span className="block text-xs text-slate-500">{money(pos.localPrice, pos.currency)}</span>}
+                      {m(pos.price)}
+                      {pos.currency !== cur.code && <span className="block text-xs text-slate-500">{money(pos.localPrice, pos.currency)}</span>}
                     </td>
                     <td className="py-2 text-right tabular-nums"><Change percent={pos.dayChangePercent} /></td>
-                    <td className="py-2 text-right tabular-nums">{money(pos.marketValue)}</td>
-                    <td className="py-2 text-right tabular-nums"><Change value={pos.unrealizedPnl} percent={pos.unrealizedPnlPct} /></td>
+                    <td className="py-2 text-right tabular-nums">{m(pos.marketValue)}</td>
+                    <td className="py-2 text-right tabular-nums"><Change value={cv(pos.unrealizedPnl)} percent={pos.unrealizedPnlPct} currency={cur.code} /></td>
                     <td className="py-2 text-right tabular-nums text-slate-400">{pos.weightPct ?? "—"}%</td>
                   </tr>
                 ))}
@@ -132,9 +137,9 @@ export default async function PortfolioPage() {
                     </td>
                     <td className="py-2 font-medium">{t.symbol}</td>
                     <td className="py-2 text-right tabular-nums">{t.quantity}</td>
-                    <td className="py-2 text-right tabular-nums">{money(t.price)}</td>
-                    <td className="py-2 text-right tabular-nums">{money(t.total)}</td>
-                    <td className="py-2 text-right tabular-nums">{t.realizedPnl === null ? "—" : <Change value={t.realizedPnl} />}</td>
+                    <td className="py-2 text-right tabular-nums">{m(t.price)}</td>
+                    <td className="py-2 text-right tabular-nums">{m(t.total)}</td>
+                    <td className="py-2 text-right tabular-nums">{t.realizedPnl === null ? "—" : <Change value={cv(t.realizedPnl)} currency={cur.code} />}</td>
                     <td className="py-2 text-right text-xs text-slate-500">{t.source === "CHAT" ? "AI chat" : "App"}</td>
                   </tr>
                 ))}

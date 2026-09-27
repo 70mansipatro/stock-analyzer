@@ -1,7 +1,8 @@
-import { Check, Palette, ShieldCheck, SlidersHorizontal, UserRound, X } from "lucide-react";
+import { Check, Coins, Palette, ShieldCheck, SlidersHorizontal, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PlatformSettingsForm, ReadOnlyBanner, RoleBadge } from "@/components/admin/AdminControls";
+import { CurrencyToggle } from "@/components/CurrencyProvider";
 import { ThemePicker } from "@/components/ThemeToggle";
 import { Card, PageHeader } from "@/components/ui";
 import { currentActor } from "@/lib/authz";
@@ -10,7 +11,7 @@ import { can, ROLE_INFO, type Permission } from "@/lib/rbac";
 import { getSettings } from "@/lib/settings";
 
 const PERMS: { id: Permission; label: string }[] = [
-  { id: "trade", label: "Place paper trades" },
+  { id: "trade", label: "Buy and sell with virtual money" },
   { id: "ai.chat", label: "Use the AI assistant" },
   { id: "ai.review", label: "Run AI portfolio reviews" },
   { id: "admin.view", label: "Open the admin console (read-only)" },
@@ -33,6 +34,13 @@ export default async function SettingsPage() {
 
       <Card title="Appearance" subtitle="Choose how Stock Analyzer looks on this device" icon={Palette} tone="violet">
         <ThemePicker />
+      </Card>
+
+      <Card title="Currency" subtitle="Show your cash, portfolio value and profit/loss in dollars or rupees" icon={Coins} tone="amber">
+        <div className="flex flex-wrap items-center gap-4">
+          <CurrencyToggle size="lg" />
+          <p className="text-sm text-slate-400">Converted at the live exchange rate. Stock prices always show in their own market&apos;s currency.</p>
+        </div>
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-2">

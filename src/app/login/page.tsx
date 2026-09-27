@@ -15,16 +15,16 @@ const FEATURES = [
   { icon: "▦", title: "Live market heatmap", body: "US and NIFTY large caps sized by market cap and coloured by today's move." },
   { icon: "⌁", title: "Pro candlestick charts", body: "1D to 5Y candles with volume, moving averages, RSI and MACD panes." },
   { icon: "◔", title: "Statistical forecasts", body: "Trend projection with a 90% range and a built-in backtest of its accuracy." },
-  { icon: "✦", title: "AI assistant", body: "Ask in plain English. Gemini calls 8 tools for quotes, analysis, news and trades." },
+  { icon: "✦", title: "AI assistant", body: "Ask in plain English for quotes, analysis, news and trades. It does the research for you." },
   { icon: "☍", title: "News with AI sentiment", body: "Every headline tagged positive, negative or neutral, with an overall tone." },
-  { icon: "◈", title: "Paper trading", body: "$100,000 virtual cash, any exchange, live FX conversion, performance vs the S&P 500." },
+  { icon: "◈", title: "Virtual trading", body: "$100,000 of practice money, stocks from any market, in dollars or rupees, compared with the S&P 500." },
 ];
 
 const GUARDRAILS = [
-  { n: "1", title: "Input", body: "Blocks jailbreaks, off-topic and harmful requests" },
-  { n: "2", title: "Model", body: "Numbers only from tools; never promises returns" },
-  { n: "3", title: "Tools", body: "Server-side prices, order limits, signed confirmations" },
-  { n: "4", title: "Output", body: "Rewrites overconfident claims as they stream" },
+  { n: "1", title: "Stays on topic", body: "Only answers about markets and your portfolio, and refuses harmful requests" },
+  { n: "2", title: "Real data only", body: "Every price and number comes from live market data, never guesses" },
+  { n: "3", title: "You approve every trade", body: "The AI can suggest a trade, but nothing happens until you confirm" },
+  { n: "4", title: "No hype", body: "Never promises returns or calls anything risk-free" },
 ];
 
 function GoogleButton({ callbackUrl, large = false }: { callbackUrl?: string; large?: boolean }) {
@@ -83,7 +83,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-8 px-4 py-8 sm:px-6 lg:min-h-[calc(100dvh-7rem)] lg:grid-cols-[1.1fr_0.9fr] lg:gap-12 lg:py-6">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live market data · Gemini on Vertex AI
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live market data · AI-powered insights
           </span>
           <h1 className="mt-4 text-4xl font-bold leading-[1.1] tracking-tight xl:text-5xl">
             Research, forecast and trade stocks <span className="text-gradient">with an AI copilot</span>
@@ -92,7 +92,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             Heatmaps, pro charts, news sentiment and forecasts for US and Indian stocks. Practise with $100,000 of virtual cash, and ask the AI anything in plain English.
           </p>
           <ul className="mt-6 grid max-w-xl gap-2.5 text-sm text-slate-300 sm:grid-cols-2">
-            {["Live heatmap & candlestick charts", "AI assistant with 8 market tools", "News sentiment & 90-day forecasts", "Paper trading with 4-layer guardrails"].map((f) => (
+            {["Live heatmap & candlestick charts", "AI assistant that researches for you", "News sentiment & 90-day forecasts", "Practice trading with $100k virtual cash"].map((f) => (
               <li key={f} className="flex items-center gap-2">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-300">✓</span>
                 {f}
@@ -117,7 +117,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 <LocalLoginForm callbackUrl={callbackUrl} />
               </>
             )}
-            <p className="mt-4 text-center text-xs text-slate-500">Free · Paper trading only · Not financial advice</p>
+            <p className="mt-4 text-center text-xs text-slate-500">Free · Virtual money only · Not financial advice</p>
           </div>
         </div>
       </section>
@@ -157,7 +157,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 <span className="rounded-2xl rounded-br-sm bg-emerald-600/90 px-3 py-1.5 text-white">Buy 10 shares of RR Kabel</span>
               </div>
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-amber-300">Confirm paper trade</div>
+                <div className="text-[10px] font-medium uppercase tracking-wide text-amber-300">Confirm trade</div>
                 <div className="font-semibold">Buy 10 RRKABEL.NS</div>
                 <div className="text-xs text-slate-400">≈ $26.39 (₹2,528.30) each · $263.91 total</div>
               </div>
@@ -190,8 +190,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
       <section className="relative z-10 mx-auto max-w-6xl px-4 pb-20 sm:px-6">
         <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 sm:p-8">
-          <h2 className="text-xl font-semibold">AI you can trust with your (paper) money</h2>
-          <p className="mt-1 text-sm text-slate-400">Four layers of guardrails around every chat message and every trade.</p>
+          <h2 className="text-xl font-semibold">AI you can trust</h2>
+          <p className="mt-1 text-sm text-slate-400">Built-in safety checks on every question and every trade.</p>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {GUARDRAILS.map((g) => (
               <div key={g.n} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
@@ -207,7 +207,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </section>
 
       <footer className="relative z-10 border-t border-slate-800 px-4 py-6 text-center text-xs text-slate-500">
-        Paper trading only. No real money is used. Market data from Yahoo Finance, may be delayed. Not financial advice.
+        Virtual trading only, no real money. Market data may be delayed. Not financial advice.
       </footer>
     </main>
   );

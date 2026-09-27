@@ -36,7 +36,7 @@ export function PortfolioReview({ hasHoldings }: { hasHoldings: boolean }) {
     return (
       <div className="flex flex-col items-start gap-3">
         <p className="text-sm text-slate-400">
-          Gemini checks your holdings, sector mix, volatility and cash, then scores your risk and suggests what to think about.
+          AI looks at your holdings, sectors, price swings and cash, then scores your risk and suggests what to think about.
         </p>
         <button
           onClick={run}

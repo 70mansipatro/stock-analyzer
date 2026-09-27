@@ -147,7 +147,7 @@ export async function reviewPortfolio(userId: string): Promise<PortfolioReview> 
     risks: output.risks.map(clean),
     ideas: output.ideas.map(clean),
     generatedAt: new Date().toISOString(),
-    disclaimer: "AI-generated from your paper portfolio's numbers. Educational only, not financial advice.",
+    disclaimer: "AI-generated from your portfolio's numbers. For learning only, not financial advice.",
   };
   await audit(userId, "portfolio_review", { riskScore: review.riskScore, holdings: portfolio.positions.length });
   return review;

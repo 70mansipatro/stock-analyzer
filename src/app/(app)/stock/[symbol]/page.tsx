@@ -119,7 +119,7 @@ export default async function StockPage({
             )}
           </Card>
 
-          <Card title="Latest news" subtitle="Headlines labelled by Gemini" icon={Newspaper} tone="amber">
+          <Card title="Latest news" subtitle="Headlines rated positive, neutral or negative by AI" icon={Newspaper} tone="amber">
             <Suspense fallback={<NewsSkeleton />}>
               <NewsPanel symbol={q.symbol} />
             </Suspense>
@@ -127,7 +127,7 @@ export default async function StockPage({
         </div>
 
         <div className="space-y-6">
-          <Card title="Paper trade" subtitle="Virtual cash · live price" icon={ArrowLeftRight} tone="emerald">
+          <Card title="Trade" subtitle="Virtual money · live price" icon={ArrowLeftRight} tone="emerald">
             {tradeBlocked ? (
               <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">{tradeBlocked}</p>
             ) : (

@@ -77,7 +77,7 @@ export async function NewsPanel({ symbol }: { symbol: string }) {
           );
         })}
       </ul>
-      <p className="text-xs text-slate-500">Sentiment labelled by Gemini from headlines only. It can be wrong; read the article before acting.</p>
+      <p className="text-xs text-slate-500">Ratings are made by AI from headlines only. It can be wrong; read the article before acting.</p>
     </div>
   );
 }
@@ -95,7 +95,7 @@ export function NewsSkeleton() {
           </div>
         </div>
       ))}
-      <p className="text-xs text-slate-500">Gemini is reading the latest headlines…</p>
+      <p className="text-xs text-slate-500">AI is reading the latest headlines…</p>
     </div>
   );
 }

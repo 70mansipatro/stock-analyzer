@@ -7,6 +7,8 @@ import { getNewsInsight } from "@/lib/insights";
 import { predictStock } from "@/lib/prediction";
 import { can, type AppRole } from "@/lib/rbac";
 import type { PlatformSettings } from "@/lib/settings";
+import { inCcy, USD, type DisplayCurrency } from "@/lib/display-currency";
+import { money } from "@/lib/format";
 import { executeOrder, getPortfolio, TradeError, validateOrder } from "@/lib/trading";
 import { audit } from "@/lib/audit";
 
@@ -125,14 +127,14 @@ export type ChatMessage = UIMessage<never, { guardrail: { reason: string } }, In
  * Tool rail for trades: check the order before asking the user.
  * Invalid orders are denied automatically with the reason; valid ones show a confirmation card.
  */
-export function buildToolApproval(userId: string): ToolApprovalConfiguration<ChatTools, unknown> {
+export function buildToolApproval(userId: string, ccy: DisplayCurrency = USD): ToolApprovalConfiguration<ChatTools, unknown> {
   return {
     placeTrade: async (input) => {
       try {
         const p = await validateOrder(userId, input);
         return {
           type: "user-approval",
-          reason: `${p.side} ${p.quantity} ${p.symbol} at about $${p.price.toFixed(2)}${p.currency !== "USD" ? ` (${p.localPrice.toLocaleString()} ${p.currency})` : ""} = $${p.total.toLocaleString()}. Cash after: $${p.cashAfter.toLocaleString()}.`,
+          reason: `${p.side === "BUY" ? "Buy" : "Sell"} ${p.quantity} ${p.symbol} at ${p.currency !== "USD" ? money(p.localPrice, p.currency) : money(p.price)} each = ${inCcy(p.total, ccy)}. Cash after: ${inCcy(p.cashAfter, ccy)}.`,
         };
       } catch (err) {
         const reason = err instanceof TradeError || err instanceof MarketError ? err.message : "Order could not be checked.";

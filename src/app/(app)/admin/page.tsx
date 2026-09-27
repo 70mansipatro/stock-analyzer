@@ -7,7 +7,8 @@ import { Change } from "@/components/Change";
 import { Card, PageHeader, Stat } from "@/components/ui";
 import { aiUsageStats, guardrailStats, listAssignments, listUsers, tradingStats } from "@/lib/admin";
 import { currentActor } from "@/lib/authz";
-import { money } from "@/lib/format";
+import { inCcy } from "@/lib/display-currency";
+import { getDisplayCurrency } from "@/lib/display-currency-server";
 import { can, ROLE_INFO, ROLES, type AppRole } from "@/lib/rbac";
 
 const TABS = [
@@ -46,13 +47,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const { tab: rawTab } = await searchParams;
   const tab: Tab = TABS.some((t) => t.id === rawTab) ? (rawTab as Tab) : "overview";
 
-  const [users, guard, trading, ai, assignments] = await Promise.all([
+  const [users, guard, trading, ai, assignments, cur] = await Promise.all([
     listUsers(),
     guardrailStats(),
     tradingStats(),
     aiUsageStats(),
     tab === "users" ? listAssignments() : Promise.resolve([]),
+    getDisplayCurrency(),
   ]);
+  const money = (usd: number) => inCcy(usd, cur);
   const roleCounts = ROLES.map((r) => ({ role: r, n: users.filter((u) => u.role === r).length }));
   const pending = assignments.filter((a) => !a.joined);
 
@@ -91,7 +94,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
             <Stat label="Users" icon={Users} tone="violet" value={users.length} sub={<span className="text-slate-500">{users.filter((u) => u.suspended).length} suspended</span>} />
             <Stat label="Guardrail blocks (14d)" icon={ShieldAlert} tone="rose" value={guard.blockedTotal} sub={<span className="text-slate-500">{guard.forged} forged approvals</span>} />
-            <Stat label="Paper volume (all time)" icon={Coins} tone="emerald" value={money(trading.totalVolume)} sub={<span className="text-slate-500">{trading.totalTrades} trades · {trading.activeTraders} traders</span>} />
+            <Stat label="Virtual trading volume (all time)" icon={Coins} tone="emerald" value={money(trading.totalVolume)} sub={<span className="text-slate-500">{trading.totalTrades} trades · {trading.activeTraders} traders</span>} />
             <Stat label="AI chats (14d)" icon={Sparkles} tone="sky" value={ai.chats} sub={<span className="text-slate-500">{ai.reviews} portfolio reviews</span>} />
           </div>
           <div className="grid gap-6 xl:grid-cols-3">
@@ -116,7 +119,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             </Card>
           </div>
           <div className="grid gap-6 xl:grid-cols-2">
-            <Card title="Paper trading volume" subtitle="Buys vs sells per day (USD)" icon={Coins} tone="emerald">
+            <Card title="Virtual trading volume" subtitle="Buys vs sells per day (USD)" icon={Coins} tone="emerald">
               <StackedBars data={trading.series} series={[{ key: "buy", label: "Buys" }, { key: "sell", label: "Sells" }]} money />
             </Card>
             <Card title="AI usage" subtitle="Chat messages and portfolio reviews per day" icon={Bot} tone="sky">
@@ -254,7 +257,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       {tab === "trading" && (
         <>
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
-            <Stat label="Total paper volume" icon={Coins} tone="emerald" value={money(trading.totalVolume)} />
+            <Stat label="Total virtual volume" icon={Coins} tone="emerald" value={money(trading.totalVolume)} />
             <Stat label="Trades" icon={Activity} tone="sky" value={trading.totalTrades} />
             <Stat label="Active traders" icon={Users} tone="violet" value={trading.activeTraders} />
           </div>

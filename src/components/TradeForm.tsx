@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { placeOrderAction, type TradeState } from "@/app/actions";
+import { useCurrency } from "@/components/CurrencyProvider";
 import { money } from "@/lib/format";
 import { toast } from "@/lib/toast";
 
@@ -23,6 +24,7 @@ export function TradeForm({
   owned: number;
   maxOrderValue: number;
 }) {
+  const ccy = useCurrency();
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [qty, setQty] = useState("1");
   const [confirming, setConfirming] = useState(false);
@@ -39,7 +41,7 @@ export function TradeForm({
   const problem = !valid
     ? "Enter a whole number of shares."
     : total > maxOrderValue
-      ? `Over the $${maxOrderValue.toLocaleString()} per-order limit.`
+      ? `Over the ${ccy.fmt(maxOrderValue, 0)} per-order limit.`
       : side === "BUY" && total > cash
         ? "Not enough cash."
         : side === "SELL" && quantity > owned
@@ -88,15 +90,11 @@ export function TradeForm({
 
       <dl className="space-y-1 text-sm">
         <div className="flex justify-between"><dt className="text-slate-400">Market price</dt><dd className="text-right tabular-nums">
-          {currency !== "USD" && (
-            <span className="text-slate-400">
-              {money(localPrice, currency)} ≈{" "}
-            </span>
-          )}
-          ${price.toFixed(2)}
+          {money(localPrice, currency)}
+          {currency !== ccy.code && <span className="text-slate-400"> ≈ {ccy.fmt(price)}</span>}
         </dd></div>
-        <div className="flex justify-between"><dt className="text-slate-400">Estimated total</dt><dd className="tabular-nums font-medium">${total.toLocaleString("en-US", { maximumFractionDigits: 2 })}</dd></div>
-        <div className="flex justify-between"><dt className="text-slate-400">Cash available</dt><dd className="tabular-nums">${cash.toLocaleString("en-US", { maximumFractionDigits: 2 })}</dd></div>
+        <div className="flex justify-between"><dt className="text-slate-400">Estimated total</dt><dd className="tabular-nums font-medium">{ccy.fmt(total)}</dd></div>
+        <div className="flex justify-between"><dt className="text-slate-400">Cash available</dt><dd className="tabular-nums">{ccy.fmt(cash)}</dd></div>
         <div className="flex justify-between"><dt className="text-slate-400">Shares owned</dt><dd className="tabular-nums">{owned}</dd></div>
       </dl>
 
@@ -114,9 +112,9 @@ export function TradeForm({
       ) : (
         <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-800/60 p-3">
           <p className="text-sm">
-            {side === "BUY" ? "Buy" : "Sell"} <b>{quantity}</b> {symbol} for about <b>${total.toLocaleString("en-US", { maximumFractionDigits: 2 })}</b>?
+            {side === "BUY" ? "Buy" : "Sell"} <b>{quantity}</b> {symbol} for about <b>{ccy.fmt(total)}</b>?
             <span className="block text-xs text-slate-400">
-              Executed at the live price when you confirm{currency !== "USD" ? `, converted from ${currency} to USD` : ""}. Paper trade, no real money.
+              Executed at the live price when you confirm{currency !== "USD" ? `, converted from ${currency} to USD` : ""}. Virtual money, nothing real is spent.
             </span>
           </p>
           <div className="flex gap-2">

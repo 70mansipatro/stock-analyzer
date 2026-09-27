@@ -78,7 +78,7 @@ export function ChatWidget() {
             <div className="relative min-w-0 flex-1">
               <div className="text-sm font-semibold">AI Assistant</div>
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Gemini · 8 market tools · guardrails on
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Online · ask about any stock
               </div>
             </div>
             <Link href="/assistant" onClick={() => setOpen(false)} aria-label="Open full screen" className="relative rounded-lg p-2 text-slate-400 hover:bg-ink/5 hover:text-slate-50">

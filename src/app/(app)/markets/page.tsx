@@ -111,7 +111,7 @@ export default async function MarketsPage({ searchParams }: { searchParams: Prom
       </Card>
 
       <p className="flex items-center gap-2 text-xs text-slate-500">
-        <BarChart3 className="h-3.5 w-3.5" /> Click any stock or heatmap tile for charts, AI news sentiment, forecasts and paper trading.
+        <BarChart3 className="h-3.5 w-3.5" /> Click any stock or heatmap tile for charts, AI news insights, forecasts and virtual trading.
       </p>
     </div>
   );

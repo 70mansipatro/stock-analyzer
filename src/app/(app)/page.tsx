@@ -6,7 +6,9 @@ import { Change } from "@/components/Change";
 import { AllocationDonut, PerformanceChart } from "@/components/PortfolioCharts";
 import { PortfolioReview } from "@/components/PortfolioReview";
 import { Card, ErrorNote, PageHeader, Stat } from "@/components/ui";
-import { money, pct, signedMoney } from "@/lib/format";
+import { inCcy, signedInCcy } from "@/lib/display-currency";
+import { getDisplayCurrency } from "@/lib/display-currency-server";
+import { money, pct } from "@/lib/format";
 import { getTopStocks, type StockRow, type TopCategory } from "@/lib/market";
 import { getAllocation, getPerformance } from "@/lib/performance";
 import { getPortfolio } from "@/lib/trading";
@@ -22,7 +24,9 @@ const PROMPTS = ["What are today's top gainers?", "Analyze NVDA", "What's the ne
 export default async function Dashboard() {
   const session = await auth();
   const user = session!.user;
-  const portfolio = await getPortfolio(user.id);
+  const [portfolio, cur] = await Promise.all([getPortfolio(user.id), getDisplayCurrency()]);
+  const m = (usd: number | null) => inCcy(usd, cur);
+  const sm = (usd: number) => signedInCcy(usd, cur);
   const [performance, allocation, ...movers] = await Promise.all([
     getPerformance(user.id, portfolio).catch(() => null),
     getAllocation(portfolio).catch(() => null),
@@ -46,7 +50,7 @@ export default async function Dashboard() {
             Welcome back, <span className="text-gradient">{user.name?.split(" ")[0] ?? "trader"}</span>
           </>
         }
-        subtitle={`${today} · Your paper portfolio at a glance`}
+        subtitle={`${today} · Your portfolio at a glance`}
       >
         <div className="flex gap-2">
           <Link href="/markets" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-slate-200 transition hover:border-ink/20">
@@ -62,13 +66,13 @@ export default async function Dashboard() {
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <Stat label="Portfolio value" icon={Wallet} tone="emerald" value={money(portfolio.totalValue)} sub={<Change percent={portfolio.totalReturnPct} />} trend={{ values: series, up }} />
+        <Stat label="Portfolio value" icon={Wallet} tone="emerald" value={m(portfolio.totalValue)} sub={<Change percent={portfolio.totalReturnPct} />} trend={{ values: series, up }} />
         <Stat
           label="Unrealized P&L"
           icon={LineChart}
           tone={portfolio.unrealizedPnl >= 0 ? "emerald" : "rose"}
-          value={<span className={portfolio.unrealizedPnl >= 0 ? "text-emerald-300" : "text-red-300"}>{signedMoney(portfolio.unrealizedPnl)}</span>}
-          sub={<span className="text-slate-500">Realized {signedMoney(portfolio.realizedPnl)}</span>}
+          value={<span className={portfolio.unrealizedPnl >= 0 ? "text-emerald-300" : "text-red-300"}>{sm(portfolio.unrealizedPnl)}</span>}
+          sub={<span className="text-slate-500">Realized {sm(portfolio.realizedPnl)}</span>}
         />
         <Stat
           label="vs S&P 500"
@@ -87,11 +91,11 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2" title="Performance" subtitle="Account value vs the S&P 500 from the same $100k start" icon={LineChart} tone="sky">
-          <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} />
+        <Card className="xl:col-span-2" title="Performance" subtitle="Account value vs the S&P 500 from the same starting cash" icon={LineChart} tone="sky">
+          <PerformanceChart points={performance?.points ?? []} benchmarkLabel={performance?.benchmarkLabel ?? "S&P 500"} currency={cur.code} rate={cur.rate} />
         </Card>
         <Card title="Allocation" subtitle={`${portfolio.positions.length} positions + cash`} icon={PieChart} tone="violet">
-          <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" />
+          <AllocationDonut slices={allocation?.byHolding ?? []} title="Largest" currency={cur.code} rate={cur.rate} />
         </Card>
       </div>
 
@@ -99,7 +103,7 @@ export default async function Dashboard() {
         <Card
           className="relative overflow-hidden xl:col-span-2"
           title="AI portfolio review"
-          subtitle="Risk score, diversification and ideas from Gemini"
+          subtitle="Risk score, diversification and ideas from AI"
           icon={Sparkles}
           tone="sky"
         >
@@ -118,7 +122,7 @@ export default async function Dashboard() {
           }
         >
           {portfolio.positions.length === 0 ? (
-            <p className="text-sm text-slate-400">No holdings yet. Open any stock and buy with your {money(portfolio.cash)} of virtual cash.</p>
+            <p className="text-sm text-slate-400">No holdings yet. Open any stock and buy with your {m(portfolio.cash)} of virtual cash.</p>
           ) : (
             <ul className="space-y-1">
               {portfolio.positions.slice(0, 5).map((p) => (
@@ -134,7 +138,7 @@ export default async function Dashboard() {
                       </span>
                     </span>
                     <span className="text-right tabular-nums">
-                      <span className="block text-sm">{money(p.marketValue)}</span>
+                      <span className="block text-sm">{m(p.marketValue)}</span>
                       <span className="block text-xs">
                         <Change percent={p.unrealizedPnlPct} />
                       </span>

@@ -1,7 +1,7 @@
 import "server-only";
 import YahooFinance from "yahoo-finance2";
 
-const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"], validation: { logErrors: false } });
 
 // Simple in-process TTL cache so repeated page loads and tool calls don't hammer Yahoo.
 const cache = new Map<string, { expires: number; value: unknown }>();
@@ -33,6 +33,37 @@ export function fromExchangeNotation(raw: string): string {
   m = t.match(/^([A-Z0-9.\-&]+)\s*:\s*([A-Z]+)$/);
   if (m && m[2] in EXCHANGE_SUFFIX) return m[1] + EXCHANGE_SUFFIX[m[2]];
   return raw.trim();
+}
+
+// Brand or former names that Yahoo's search doesn't find, mapped to today's listing.
+const NAME_ALIASES: Record<string, string> = {
+  zomato: "ETERNAL.NS", "zomato ltd": "ETERNAL.NS", blinkit: "ETERNAL.NS", eternal: "ETERNAL.NS",
+  paytm: "PAYTM.NS", "one97": "PAYTM.NS", nykaa: "NYKAA.NS", policybazaar: "POLICYBZR.NS", "pb fintech": "POLICYBZR.NS",
+  "hero honda": "HEROMOTOCO.NS", "hero motocorp": "HEROMOTOCO.NS", mapmyindia: "MAPMYINDIA.NS", ixigo: "IXIGO.NS",
+  groww: "GROWW.NS", dmart: "DMART.NS", "d mart": "DMART.NS", lic: "LICI.NS", "jio financial": "JIOFIN.NS",
+  "ola electric": "OLAELEC.NS", "vodafone idea": "IDEA.NS", "urban company": "URBANCO.NS", lenskart: "LENSKART.NS",
+  meesho: "MEESHO.NS", irctc: "IRCTC.NS", "l&t": "LT.NS", "larsen": "LT.NS", sbi: "SBIN.NS", airtel: "BHARTIARTL.NS",
+  "tata passenger": "TMPV.NS", "tata motors": "TMPV.NS", "tata commercial": "TMCV.NS",
+  facebook: "META", google: "GOOGL", "square": "XYZ", "cash app": "XYZ", "berkshire": "BRK-B", "berkshire hathaway": "BRK-B",
+};
+// Tickers that changed; the base symbol (without exchange suffix) maps to the new base.
+const SYMBOL_RENAMES: Record<string, string> = { ZOMATO: "ETERNAL", FB: "META", SQ: "XYZ", TATAMOTORS: "TMPV" };
+
+function aliasFor(query: string): string | undefined {
+  const key = query
+    .toLowerCase()
+    .replace(/\b(ltd|limited|inc|corp|shares?|stocks?|stoks?|company)\b\.?/g, "")
+    .replace(/[^a-z0-9& ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return NAME_ALIASES[key];
+}
+
+/** New symbol for a renamed ticker ("ZOMATO.NS" -> "ETERNAL.NS"), or undefined. */
+function renamedSymbol(symbol: string): string | undefined {
+  const [base, ...rest] = symbol.split(".");
+  const next = SYMBOL_RENAMES[base];
+  return next ? [next, ...rest].join(".") : undefined;
 }
 
 export function normalizeSymbol(raw: string): string {
@@ -132,7 +163,11 @@ export async function getQuote(rawSymbol: string): Promise<Quote> {
       q = undefined;
     }
     if (!q || typeof q.regularMarketPrice !== "number") {
-      throw new MarketError(`No market data found for "${symbol}". Check the ticker symbol.`);
+      const renamed = renamedSymbol(symbol);
+      if (renamed) return getQuote(renamed);
+      throw new MarketError(
+        `No market data found for "${symbol}". The company may trade under a new or legal name: search by company name with searchStocks.`,
+      );
     }
     if (!TRADABLE_TYPES.has(q.quoteType)) {
       throw new MarketError(`${symbol} is a ${q.quoteType}, only stocks and ETFs are supported.`);
@@ -203,7 +238,8 @@ export async function searchSymbols(query: string): Promise<SearchHit[]> {
     if (!result.quotes.length && /\s/.test(q)) {
       result = await yf.search(q.replace(/\s+/g, ""), { quotesCount: 8, newsCount: 0 });
     }
-    return result.quotes
+    const alias = aliasFor(q);
+    const hits = result.quotes
       .filter((x): x is typeof x & { symbol: string; quoteType: string } =>
         "symbol" in x && typeof x.symbol === "string" && TRADABLE_TYPES.has(String(x.quoteType)),
       )
@@ -213,6 +249,13 @@ export async function searchSymbols(query: string): Promise<SearchHit[]> {
         exchange: String(("exchDisp" in x && x.exchDisp) || ""),
         type: x.quoteType,
       }));
+    if (alias && !hits.some((h) => h.symbol === alias)) {
+      const aq = await yf.quote(alias).catch(() => undefined);
+      if (aq) hits.unshift({ symbol: aq.symbol, name: aq.longName ?? aq.shortName ?? aq.symbol, exchange: aq.fullExchangeName ?? aq.exchange ?? "", type: aq.quoteType });
+    } else if (alias) {
+      hits.sort((a, b) => (a.symbol === alias ? -1 : b.symbol === alias ? 1 : 0));
+    }
+    return hits;
   });
 }
 
@@ -223,6 +266,8 @@ export async function searchSymbols(query: string): Promise<SearchHit[]> {
 export async function resolveSymbol(text: string): Promise<string | null> {
   const raw = fromExchangeNotation(text);
   if (!raw) return null;
+  const alias = aliasFor(raw);
+  if (alias) return alias;
   if (SYMBOL_RE.test(raw.toUpperCase())) {
     const ok = await getQuote(raw).then(() => true, () => false);
     if (ok) return raw.toUpperCase();

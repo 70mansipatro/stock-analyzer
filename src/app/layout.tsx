@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Stock Analyzer",
-  description: "AI-powered stock analysis and paper trading",
+  description: "AI-powered stock research and virtual trading",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

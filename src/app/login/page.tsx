@@ -1,5 +1,7 @@
 import { signIn } from "@/auth";
+import { LocalLoginForm } from "@/components/LocalLoginForm";
 import { MarketTicker } from "@/components/MarketTicker";
+import { localLoginEnabled } from "@/lib/local-admin";
 import { getMarketOverview } from "@/lib/market";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -96,6 +98,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <GoogleButton callbackUrl={callbackUrl} large />
             <span className="text-sm text-slate-500">Free · Paper trading only · No real money</span>
           </div>
+          {localLoginEnabled() && (
+            <div className="mt-5">
+              <LocalLoginForm callbackUrl={callbackUrl} />
+            </div>
+          )}
         </div>
 
         {/* Product preview */}

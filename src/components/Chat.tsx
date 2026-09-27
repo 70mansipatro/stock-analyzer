@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
-import { ArrowUp, ArrowUpRight, Square } from "lucide-react";
+import { ArrowUp, ArrowUpRight, History, MessageSquarePlus, Square, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +14,7 @@ import { Change } from "@/components/Change";
 import { AssistantMark } from "@/components/AssistantMark";
 import { ForecastChart, PriceChart } from "@/components/charts";
 import { toast } from "@/lib/toast";
+import { clearAllChats, deleteChat, getChat, newChatId, saveChat, useChatHistory } from "@/lib/chat-history";
 
 type Part = ChatMessage["parts"][number];
 
@@ -39,13 +40,34 @@ const TOOL_LABELS: Record<string, string> = {
 export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: string; variant?: "page" | "widget" }) {
   const router = useRouter();
   const [input, setInput] = useState("");
+  // Each conversation has its own id; changing it starts (or reopens) a conversation.
+  const [conversation, setConversation] = useState<{ id: string; messages?: ChatMessage[] }>(() => ({ id: newChatId() }));
+  const chatId = conversation.id;
   const { messages, sendMessage, addToolApprovalResponse, status, stop, error, regenerate } = useChat<ChatMessage>({
+    id: conversation.id,
+    messages: conversation.messages,
     transport: new DefaultChatTransport({ api: "/api/chat" }),
     // After the user approves or rejects a trade, continue automatically so the model reports the result.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: () => router.refresh(),
   });
   const busy = status === "submitted" || status === "streaming";
+
+  // Save the conversation to this browser's history whenever a reply finishes.
+  useEffect(() => {
+    if (status === "ready" || status === "error") saveChat(chatId, messages);
+  }, [status, messages, chatId]);
+
+  const openChat = (id: string | null) => {
+    stop();
+    setInput("");
+    setConversation(id ? { id, messages: getChat(id)?.messages } : { id: newChatId() });
+  };
+  const clearChat = () => {
+    deleteChat(chatId);
+    openChat(null);
+    toast("info", "Chat cleared");
+  };
   const bottomRef = useRef<HTMLDivElement>(null);
   const sentInitial = useRef(false);
 
@@ -86,6 +108,14 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
 
   return (
     <div className={widget ? "flex h-full flex-col" : "mx-auto flex h-[calc(100dvh-10rem)] max-w-4xl flex-col"}>
+      <ChatToolbar
+        widget={widget}
+        currentId={chatId}
+        hasMessages={messages.length > 0}
+        onNew={() => openChat(null)}
+        onOpen={(id) => openChat(id)}
+        onClear={clearChat}
+      />
       <div className={`flex-1 space-y-5 overflow-y-auto ${widget ? "px-4 py-4" : "pb-4 pr-1"}`}>
         {messages.length === 0 && (
           <div className={`text-center ${widget ? "pt-4" : "pt-12"}`}>
@@ -188,6 +218,101 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
         </div>
         <p className="mt-2 text-center text-[11px] text-slate-500">AI can make mistakes. Paper trading only. Not financial advice.</p>
       </form>
+    </div>
+  );
+}
+
+function ChatToolbar({
+  widget,
+  currentId,
+  hasMessages,
+  onNew,
+  onOpen,
+  onClear,
+}: {
+  widget: boolean;
+  currentId: string;
+  hasMessages: boolean;
+  onNew: () => void;
+  onOpen: (id: string) => void;
+  onClear: () => void;
+}) {
+  const history = useChatHistory();
+  const [open, setOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const btn = "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-400 transition hover:bg-ink/5 hover:text-slate-50 disabled:opacity-40 disabled:hover:bg-transparent";
+
+  return (
+    <div className={`relative flex items-center gap-1 ${widget ? "border-b border-ink/5 px-3 py-1.5" : "mb-2"}`}>
+      {!widget && <span className="mr-auto text-sm font-semibold">AI Assistant</span>}
+      <button onClick={onNew} disabled={!hasMessages} className={btn} title="Start a new conversation">
+        <MessageSquarePlus className="h-3.5 w-3.5" /> New chat
+      </button>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className={btn} title="Recent conversations">
+        <History className="h-3.5 w-3.5" /> History{history.length ? ` (${history.length})` : ""}
+      </button>
+      {confirmClear ? (
+        <span className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-400">
+          Delete this chat?
+          <button
+            onClick={() => {
+              onClear();
+              setConfirmClear(false);
+            }}
+            className="rounded px-1.5 py-0.5 font-medium hover:bg-red-500/20"
+          >
+            Yes
+          </button>
+          <button onClick={() => setConfirmClear(false)} className="rounded px-1.5 py-0.5 hover:bg-red-500/20">
+            No
+          </button>
+        </span>
+      ) : (
+        <button onClick={() => setConfirmClear(true)} disabled={!hasMessages} className={`${btn} ${widget ? "" : ""}`} title="Delete this conversation">
+          <Trash2 className="h-3.5 w-3.5" /> Clear chat
+        </button>
+      )}
+
+      {open && (
+        <div className="absolute right-2 top-full z-30 mt-1 w-72 overflow-hidden rounded-2xl border border-ink/10 bg-surface-2 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-ink/5 px-3 py-2 text-xs font-medium text-slate-400">
+            Recent conversations
+            <button onClick={() => setOpen(false)} aria-label="Close history" className="rounded p-1 hover:bg-ink/5">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {history.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-slate-500">No saved conversations yet.</p>
+          ) : (
+            <ul className="max-h-72 overflow-y-auto py-1">
+              {history.map((c) => (
+                <li key={c.id} className="group flex items-center">
+                  <button
+                    onClick={() => {
+                      onOpen(c.id);
+                      setOpen(false);
+                    }}
+                    className={`min-w-0 flex-1 px-3 py-2 text-left text-sm transition hover:bg-ink/5 ${c.id === currentId ? "text-emerald-300" : "text-slate-200"}`}
+                  >
+                    <span className="block truncate">{c.title}</span>
+                    <span className="block text-[11px] text-slate-500">
+                      {new Date(c.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · {c.messages.length} messages
+                    </span>
+                  </button>
+                  <button onClick={() => deleteChat(c.id)} aria-label={`Delete ${c.title}`} className="mr-2 rounded p-1.5 text-slate-500 opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 focus:opacity-100">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {history.length > 0 && (
+            <button onClick={() => clearAllChats()} className="w-full border-t border-ink/5 px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10">
+              Delete all history
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -11,22 +11,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   Suspended: "This account has been suspended by an administrator.",
 };
 
-const FEATURES = [
-  { icon: "▦", title: "Live market heatmap", body: "US and NIFTY large caps sized by market cap and coloured by today's move." },
-  { icon: "⌁", title: "Pro candlestick charts", body: "1D to 5Y candles with volume, moving averages, RSI and MACD panes." },
-  { icon: "◔", title: "Statistical forecasts", body: "Trend projection with a 90% range and a built-in backtest of its accuracy." },
-  { icon: "✦", title: "AI assistant", body: "Ask in plain English for quotes, analysis, news and trades. It does the research for you." },
-  { icon: "☍", title: "News with AI sentiment", body: "Every headline tagged positive, negative or neutral, with an overall tone." },
-  { icon: "◈", title: "Virtual trading", body: "$100,000 of practice money, stocks from any market, in dollars or rupees, compared with the S&P 500." },
-];
-
-const GUARDRAILS = [
-  { n: "1", title: "Stays on topic", body: "Only answers about markets and your portfolio, and refuses harmful requests" },
-  { n: "2", title: "Real data only", body: "Every price and number comes from live market data, never guesses" },
-  { n: "3", title: "You approve every trade", body: "The AI can suggest a trade, but nothing happens until you confirm" },
-  { n: "4", title: "No hype", body: "Never promises returns or calls anything risk-free" },
-];
-
 function GoogleButton({ callbackUrl, large = false }: { callbackUrl?: string; large?: boolean }) {
   return (
     <form
@@ -59,7 +43,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const overview = await getMarketOverview().catch(() => []);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+    <main className="relative flex min-h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100 lg:h-dvh">
       {/* Background glow */}
       <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 h-[36rem] w-[60rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-emerald-500/15 via-sky-500/10 to-violet-500/15 blur-3xl" />
 
@@ -80,7 +64,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </header>
 
       {/* First screen: pitch on the left, sign-in on the right — fits without scrolling on laptop screens */}
-      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-8 px-4 py-8 sm:px-6 lg:min-h-[calc(100dvh-7rem)] lg:grid-cols-[1.1fr_0.9fr] lg:gap-12 lg:py-6">
+      <section className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-12 lg:py-4">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live market data · AI-powered insights
@@ -122,91 +106,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
       </section>
 
-      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6">
-        <h2 className="text-center text-2xl font-semibold">See it in action</h2>
-        <p className="mt-1 text-center text-sm text-slate-400">Analysis, forecasts and trades confirmed in one click.</p>
-        <div className="mx-auto mt-8 max-w-2xl">
-        {/* Product preview */}
-          <div className="relative">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl backdrop-blur">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-xs text-slate-500">NasdaqGS · AAPL</div>
-                <div className="text-2xl font-semibold tabular-nums">$341.19</div>
-                <div className="text-sm text-emerald-400">▲ +1.57% today</div>
-              </div>
-              <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400">▲ Bullish (+3)</span>
-            </div>
-            <svg viewBox="0 0 400 150" className="mt-4 h-40 w-full" aria-hidden>
-              <defs>
-                <linearGradient id="hero-fill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#3987e5" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#3987e5" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {[30, 65, 100].map((y) => (
-                <line key={y} x1="0" x2="400" y1={y} y2={y} stroke="var(--chart-grid)" />
-              ))}
-              <path d="M0 120 L30 112 L55 116 L80 98 L105 104 L130 86 L155 92 L180 72 L205 80 L230 62 L255 68 L280 50 L300 56 L320 40 L340 46 L360 30 L400 22 L400 150 L0 150 Z" fill="url(#hero-fill)" />
-              <path className="animate-draw" d="M0 120 L30 112 L55 116 L80 98 L105 104 L130 86 L155 92 L180 72 L205 80 L230 62 L255 68 L280 50 L300 56 L320 40 L340 46 L360 30" fill="none" stroke="#3987e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M360 30 L400 22" fill="none" stroke="#3987e5" strokeWidth="2" strokeDasharray="5 4" />
-              <path d="M360 30 L400 4 L400 44 Z" fill="#3987e5" opacity="0.15" />
-            </svg>
-            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-sm">
-              <div className="mb-2 flex justify-end">
-                <span className="rounded-2xl rounded-br-sm bg-emerald-600/90 px-3 py-1.5 text-white">Buy 10 shares of RR Kabel</span>
-              </div>
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-amber-300">Confirm trade</div>
-                <div className="font-semibold">Buy 10 RRKABEL.NS</div>
-                <div className="text-xs text-slate-400">≈ $26.39 (₹2,528.30) each · $263.91 total</div>
-              </div>
-            </div>
-          </div>
-          <div className="absolute -bottom-5 -left-4 hidden rounded-xl border border-slate-800 bg-slate-900/90 px-4 py-3 text-sm shadow-xl sm:block">
-            <div className="text-xs text-slate-500">News tone</div>
-            <div className="font-medium text-emerald-400">▲ Positive · 5 of 8 headlines</div>
-          </div>
-        </div>
-        </div>
-      </section>
-
-      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-16 sm:px-6">
-        <h2 className="text-center text-2xl font-semibold">Everything in one place</h2>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f, i) => (
-            <div
-              key={f.title}
-              className="animate-fade-up rounded-2xl border border-slate-800 bg-slate-900/50 p-5 transition hover:-translate-y-0.5 hover:border-slate-700"
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-sky-500/20 text-lg text-emerald-300">{f.icon}</span>
-              <h3 className="mt-4 font-semibold">{f.title}</h3>
-              <p className="mt-1 text-sm text-slate-400">{f.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-20 sm:px-6">
-        <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 sm:p-8">
-          <h2 className="text-xl font-semibold">AI you can trust</h2>
-          <p className="mt-1 text-sm text-slate-400">Built-in safety checks on every question and every trade.</p>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {GUARDRAILS.map((g) => (
-              <div key={g.n} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-bold text-emerald-400">{g.n}</span>
-                  <span className="font-medium">{g.title}</span>
-                </div>
-                <p className="mt-2 text-sm text-slate-400">{g.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <footer className="relative z-10 border-t border-slate-800 px-4 py-6 text-center text-xs text-slate-500">
+      <footer className="relative z-10 px-4 pb-4 text-center text-xs text-slate-500">
         Virtual trading only, no real money. Market data may be delayed. Not financial advice.
       </footer>
     </main>

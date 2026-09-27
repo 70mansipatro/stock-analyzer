@@ -79,41 +79,55 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <MarketTicker initial={overview} />
       </header>
 
-      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 lg:grid-cols-2 lg:pt-20">
+      {/* First screen: pitch on the left, sign-in on the right — fits without scrolling on laptop screens */}
+      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-8 px-4 py-8 sm:px-6 lg:min-h-[calc(100dvh-7rem)] lg:grid-cols-[1.1fr_0.9fr] lg:gap-12 lg:py-6">
         <div className="animate-fade-up">
           <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live market data · Gemini on Vertex AI
           </span>
-          <h1 className="mt-5 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
-            Research, forecast and trade stocks{" "}
-            <span className="bg-gradient-to-r from-emerald-400 via-sky-400 to-violet-400 bg-clip-text text-transparent">with an AI copilot</span>
+          <h1 className="mt-4 text-4xl font-bold leading-[1.1] tracking-tight xl:text-5xl">
+            Research, forecast and trade stocks <span className="text-gradient">with an AI copilot</span>
           </h1>
-          <p className="mt-5 max-w-xl text-lg text-slate-400">
+          <p className="mt-4 max-w-xl text-base text-slate-400 xl:text-lg">
             Heatmaps, pro charts, news sentiment and forecasts for US and Indian stocks. Practise with $100,000 of virtual cash, and ask the AI anything in plain English.
           </p>
-          {errorMessage && (
-            <div className="mt-6 max-w-xl rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{errorMessage}</div>
-          )}
-          <div className="glass mt-8 w-full max-w-md rounded-3xl p-6 sm:p-7">
+          <ul className="mt-6 grid max-w-xl gap-2.5 text-sm text-slate-300 sm:grid-cols-2">
+            {["Live heatmap & candlestick charts", "AI assistant with 8 market tools", "News sentiment & 90-day forecasts", "Paper trading with 4-layer guardrails"].map((f) => (
+              <li key={f} className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-300">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="animate-fade-up w-full lg:justify-self-end [animation-delay:120ms]">
+          <div className="glass mx-auto w-full max-w-md rounded-3xl p-6">
             <h2 className="text-xl font-semibold text-slate-50">Sign in</h2>
             <p className="mt-1 text-sm text-slate-400">Start with $100,000 of virtual cash. No real money.</p>
+            {errorMessage && <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{errorMessage}</div>}
             <div className="mt-5">
               <GoogleButton callbackUrl={callbackUrl} large />
             </div>
             {localLoginEnabled() && (
               <>
-                <div className="my-5 flex items-center gap-3 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                <div className="my-4 flex items-center gap-3 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                   <span className="h-px flex-1 bg-ink/15" /> or use your account <span className="h-px flex-1 bg-ink/15" />
                 </div>
                 <LocalLoginForm callbackUrl={callbackUrl} />
               </>
             )}
+            <p className="mt-4 text-center text-xs text-slate-500">Free · Paper trading only · Not financial advice</p>
           </div>
-          <p className="mt-4 text-sm text-slate-400">Free · Paper trading only · Not financial advice</p>
         </div>
+      </section>
 
+      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6">
+        <h2 className="text-center text-2xl font-semibold">See it in action</h2>
+        <p className="mt-1 text-center text-sm text-slate-400">Analysis, forecasts and trades confirmed in one click.</p>
+        <div className="mx-auto mt-8 max-w-2xl">
         {/* Product preview */}
-        <div className="animate-fade-up relative [animation-delay:150ms]">
+          <div className="relative">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl backdrop-blur">
             <div className="flex items-start justify-between">
               <div>
@@ -153,6 +167,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <div className="text-xs text-slate-500">News tone</div>
             <div className="font-medium text-emerald-400">▲ Positive · 5 of 8 headlines</div>
           </div>
+        </div>
         </div>
       </section>
 

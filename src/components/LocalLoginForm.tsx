@@ -5,7 +5,7 @@ import { useActionState, useState } from "react";
 import { localLogin, type LoginState } from "@/app/login/actions";
 
 const field =
-  "w-full rounded-xl border border-ink/15 bg-ink/[0.05] py-3 pl-11 pr-4 text-base text-slate-50 placeholder:text-slate-400 transition focus:border-emerald-400/70 focus:bg-ink/[0.08] focus:outline-none focus:ring-4 focus:ring-emerald-500/15";
+  "w-full rounded-xl border border-ink/15 bg-ink/[0.05] py-2.5 pl-11 pr-4 text-base text-slate-50 placeholder:text-slate-400 transition focus:border-emerald-400/70 focus:bg-ink/[0.08] focus:outline-none focus:ring-4 focus:ring-emerald-500/15";
 
 /** Username + password sign-in, always visible inside the sign-in card. */
 export function LocalLoginForm({ callbackUrl }: { callbackUrl?: string }) {
@@ -46,7 +46,7 @@ export function LocalLoginForm({ callbackUrl }: { callbackUrl?: string }) {
       )}
       <button
         disabled={pending}
-        className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-500/25 transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 disabled:opacity-60"
+        className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-emerald-500/25 transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 disabled:opacity-60"
       >
         {pending ? "Signing in…" : "Sign in"}
         {!pending && <ArrowRight className="h-4.5 w-4.5 transition group-hover:translate-x-0.5" />}

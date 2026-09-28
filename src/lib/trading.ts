@@ -4,6 +4,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getQuote, getQuotes, normalizeSymbol } from "@/lib/market";
 import { audit } from "@/lib/audit";
+import { orderFilledEmail, sendEmail, wantsEmail } from "@/lib/email";
+import { money } from "@/lib/format";
 import { roleOf } from "@/lib/roles";
 import { can, ROLE_INFO } from "@/lib/rbac";
 import { getSettings } from "@/lib/settings";
@@ -163,6 +165,7 @@ export async function executeOrder(
     });
 
     await audit(userId, "trade_executed", { symbol, side, quantity, price, total, source });
+    void sendOrderEmail(userId, preview, result.realizedPnl, source);
     return { ...preview, ...result };
   } catch (err) {
     if (err instanceof TradeError) await audit(userId, "trade_denied", { symbol, side, quantity, source, reason: err.message });
@@ -268,4 +271,30 @@ export async function getRecentTrades(userId: string, take = 20) {
     source: t.source,
     createdAt: t.createdAt.toISOString(),
   }));
+}
+
+/** Order confirmation email (respects the user's "Orders" email preference). Never throws. */
+async function sendOrderEmail(userId: string, p: OrderPreview, realizedPnl: number | null, source: "UI" | "CHAT") {
+  try {
+    if (!(await wantsEmail(userId, "orders"))) return;
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+    if (!user) return;
+    const local = p.currency !== "USD" ? `${money(p.localPrice, p.currency)} (≈ ${money(p.price)})` : money(p.price);
+    const mail = orderFilledEmail({
+      name: user.name,
+      side: p.side,
+      quantity: p.quantity,
+      symbol: p.symbol,
+      company: p.name,
+      priceLabel: local,
+      totalLabel: money(p.total),
+      cashAfterLabel: money(p.cashAfter),
+      pnlLabel: realizedPnl === null ? null : `${realizedPnl >= 0 ? "+" : "−"}${money(Math.abs(realizedPnl))}`,
+      via: source === "CHAT" ? "AI assistant" : "Trade form",
+      at: new Date(),
+    });
+    await sendEmail({ to: user.email, kind: "order_filled", userId, ...mail });
+  } catch (err) {
+    console.error("order email failed", err);
+  }
 }

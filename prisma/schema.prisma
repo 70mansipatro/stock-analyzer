@@ -28,6 +28,8 @@ model User {
   // Cash the account started (or was last reset) with; returns are measured from this.
   startingCash  Decimal   @default(100000) @db.Decimal(14, 2)
   suspended     Boolean   @default(false)
+  // Email preferences per category, e.g. {"orders": true, "account": true}. Missing = on.
+  emailPrefs    Json?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -161,4 +163,29 @@ model AppSettings {
   aiEnabled         Boolean  @default(true)
   updatedById       String?
   updatedAt         DateTime @updatedAt
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// Every email the app sends (or would send), for delivery, retries and the admin Emails tab.
+model EmailOutbox {
+  id        String      @id @default(cuid())
+  to        String
+  kind      String      // invitation, role_changed, account_suspended, account_restored, order_filled, ...
+  subject   String
+  html      String      @db.Text
+  text      String      @db.Text
+  status    EmailStatus @default(PENDING)
+  error     String?
+  attempts  Int         @default(0)
+  userId    String?
+  createdAt DateTime    @default(now())
+  sentAt    DateTime?
+
+  @@index([createdAt])
 }

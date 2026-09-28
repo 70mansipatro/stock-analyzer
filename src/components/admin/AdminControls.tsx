@@ -1,8 +1,8 @@
 "use client";
 
-import { Ban, Check, Lock, RotateCcw, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Ban, Check, Lock, RotateCcw, Send, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
-import { assignRole, removeAssignment, resetAccount, setSuspended, updateSettings, type ActionResult } from "@/app/(app)/admin/actions";
+import { assignRole, removeAssignment, resendInvitation, resetAccount, retryEmail, setSuspended, updateSettings, type ActionResult } from "@/app/(app)/admin/actions";
 import { ROLE_INFO, ROLES, type AppRole } from "@/lib/rbac";
 import { toast } from "@/lib/toast";
 
@@ -236,5 +236,32 @@ export function PlatformSettingsForm({ settings, readOnly }: { settings: Setting
         </button>
       )}
     </form>
+  );
+}
+
+export function ResendInvitationButton({ email, readOnly }: { email: string; readOnly: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      disabled={readOnly || pending}
+      onClick={() => start(async () => report(await resendInvitation(email), "Invitation sent"))}
+      title="Send the invitation email again"
+      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-400 transition hover:bg-ink/5 hover:text-slate-50 disabled:opacity-30"
+    >
+      <Send className="h-3.5 w-3.5" /> {pending ? "Sending…" : "Resend"}
+    </button>
+  );
+}
+
+export function RetryEmailButton({ id, readOnly }: { id: string; readOnly: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      disabled={readOnly || pending}
+      onClick={() => start(async () => report(await retryEmail(id), "Sent"))}
+      className="rounded-lg px-2 py-1 text-xs text-sky-300 transition hover:bg-sky-500/10 disabled:opacity-30"
+    >
+      {pending ? "Sending…" : "Retry"}
+    </button>
   );
 }

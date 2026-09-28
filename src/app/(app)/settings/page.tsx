@@ -1,9 +1,11 @@
-import { Check, Coins, Palette, ShieldCheck, SlidersHorizontal, UserRound, X } from "lucide-react";
+import { Check, Coins, Mail, Palette, ShieldCheck, SlidersHorizontal, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PlatformSettingsForm, ReadOnlyBanner, RoleBadge } from "@/components/admin/AdminControls";
 import { CurrencyToggle } from "@/components/CurrencyProvider";
+import { EmailPrefs } from "@/components/EmailPrefs";
 import { ThemePicker } from "@/components/ThemeToggle";
+import { EMAIL_CATEGORIES, emailConfigured } from "@/lib/email";
 import { Card, PageHeader } from "@/components/ui";
 import { currentActor } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
@@ -22,7 +24,7 @@ export default async function SettingsPage() {
   const actor = await currentActor();
   if (!actor) redirect("/login");
   const [user, settings] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { id: actor.id }, select: { image: true, createdAt: true, lastLoginAt: true } }),
+    prisma.user.findUniqueOrThrow({ where: { id: actor.id }, select: { image: true, createdAt: true, lastLoginAt: true, emailPrefs: true } }),
     getSettings(),
   ]);
   const showPlatform = can(actor.role, "admin.view");
@@ -42,6 +44,17 @@ export default async function SettingsPage() {
           <p className="text-sm text-slate-400">Converted at the live exchange rate. Stock prices always show in their own market&apos;s currency.</p>
         </div>
       </Card>
+
+      <div id="notifications" className="scroll-mt-24">
+        <Card title="Email notifications" subtitle="Choose which emails you get" icon={Mail} tone="sky">
+          <EmailPrefs
+            categories={EMAIL_CATEGORIES}
+            prefs={(user.emailPrefs ?? {}) as Record<string, boolean>}
+            email={actor.email}
+            configured={emailConfigured()}
+          />
+        </Card>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Account" icon={UserRound} tone="emerald">

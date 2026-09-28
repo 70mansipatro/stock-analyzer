@@ -1,7 +1,9 @@
-import { Activity, Bot, Coins, LayoutDashboard, ShieldAlert, ShieldCheck, Sparkles, UserCog, Users } from "lucide-react";
+import { Activity, Bot, Coins, LayoutDashboard, Mail, ShieldAlert, ShieldCheck, Sparkles, UserCog, Users } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AssignRoleForm, ReadOnlyBanner, RemoveAssignmentButton, RoleBadge, UserActions } from "@/components/admin/AdminControls";
+import { AssignRoleForm, ReadOnlyBanner, RemoveAssignmentButton, ResendInvitationButton, RetryEmailButton, RoleBadge, UserActions } from "@/components/admin/AdminControls";
+import { emailConfigured } from "@/lib/email";
+import { prisma } from "@/lib/prisma";
 import { StackedBars } from "@/components/admin/AdminCharts";
 import { Change } from "@/components/Change";
 import { Card, PageHeader, Stat } from "@/components/ui";
@@ -17,6 +19,7 @@ const TABS = [
   { id: "guardrails", label: "Guardrails", icon: ShieldAlert },
   { id: "trading", label: "Trading", icon: Coins },
   { id: "ai", label: "AI usage", icon: Bot },
+  { id: "emails", label: "Emails", icon: Mail },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -55,6 +58,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     tab === "users" ? listAssignments() : Promise.resolve([]),
     getDisplayCurrency(),
   ]);
+  const emails = tab === "emails" ? await prisma.emailOutbox.findMany({ orderBy: { createdAt: "desc" }, take: 60 }) : [];
   const money = (usd: number) => inCcy(usd, cur);
   const roleCounts = ROLES.map((r) => ({ role: r, n: users.filter((u) => u.role === r).length }));
   const pending = assignments.filter((a) => !a.joined);
@@ -143,6 +147,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                     <span className="min-w-0 flex-1 truncate">{a.email}</span>
                     {a.note && <span className="hidden truncate text-xs text-slate-500 md:block">{a.note}</span>}
                     <RoleBadge role={a.role as AppRole} />
+                    <ResendInvitationButton email={a.email} readOnly={readOnly} />
                     <RemoveAssignmentButton email={a.email} readOnly={readOnly} />
                   </li>
                 ))}
@@ -363,6 +368,57 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                         <td className="py-2.5 text-right tabular-nums">{u.week}</td>
                         <td className="py-2.5 text-right tabular-nums">{u.total}</td>
                         <td className="py-2.5 text-right tabular-nums">{u.reviews}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+      {tab === "emails" && (
+        <>
+          {!emailConfigured() && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+              Email sending isn&apos;t set up. Emails are recorded below as <b>Skipped</b>. Add the SMTP_* settings to .env.local and restart to start delivering.
+            </div>
+          )}
+          <Card title="Recent emails" subtitle="Invitations, role changes and order confirmations (latest 60)" icon={Mail} tone="sky">
+            {emails.length === 0 ? (
+              <p className="text-sm text-slate-400">No emails yet. Assign a role to an email or place a trade to send one.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="text-left text-xs text-slate-500">
+                    <tr>
+                      <th className="pb-2 font-normal">When</th>
+                      <th className="pb-2 font-normal">To</th>
+                      <th className="pb-2 font-normal">Type</th>
+                      <th className="pb-2 font-normal">Subject</th>
+                      <th className="pb-2 font-normal">Status</th>
+                      <th className="pb-2 text-right font-normal"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink/5">
+                    {emails.map((e) => (
+                      <tr key={e.id}>
+                        <td className="py-2.5 text-slate-400">{ago(e.createdAt.toISOString())}</td>
+                        <td className="py-2.5">{e.to}</td>
+                        <td className="py-2.5 text-xs text-slate-400">{e.kind.replace(/_/g, " ")}</td>
+                        <td className="max-w-[18rem] truncate py-2.5" title={e.subject}>{e.subject}</td>
+                        <td className="py-2.5">
+                          <span
+                            title={e.error ?? undefined}
+                            className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                              e.status === "SENT" ? "bg-emerald-500/15 text-emerald-300" : e.status === "FAILED" ? "bg-red-500/15 text-red-400" : e.status === "SKIPPED" ? "bg-slate-500/15 text-slate-300" : "bg-amber-500/15 text-amber-300"
+                            }`}
+                          >
+                            {e.status === "SENT" ? "Sent" : e.status === "FAILED" ? "Failed" : e.status === "SKIPPED" ? "Skipped" : "Sending"}
+                          </span>
+                          {e.error && <span className="block max-w-[16rem] truncate text-[11px] text-slate-500">{e.error}</span>}
+                        </td>
+                        <td className="py-2.5 text-right">{e.status !== "SENT" && <RetryEmailButton id={e.id} readOnly={readOnly} />}</td>
                       </tr>
                     ))}
                   </tbody>

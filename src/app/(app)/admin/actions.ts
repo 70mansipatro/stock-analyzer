@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import type { Role } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
+import { accessEmail, invitationEmail, resendEmail, roleChangedEmail, sendEmail, wantsEmail } from "@/lib/email";
 import { AccessError, isBootstrapAdmin, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { ROLE_INFO, ROLES } from "@/lib/rbac";
@@ -12,10 +13,10 @@ import { clearSettingsCache, getSettings } from "@/lib/settings";
 
 export type ActionResult = { ok: boolean; message: string } | null;
 
-async function guard<T>(fn: (actorId: string, actorEmail: string) => Promise<T>): Promise<ActionResult> {
+async function guard<T>(fn: (actorId: string, actorEmail: string, actorName: string) => Promise<T>): Promise<ActionResult> {
   try {
     const actor = await requirePermission("admin.manage");
-    await fn(actor.id, actor.email);
+    await fn(actor.id, actor.email, actor.name ?? actor.email);
     revalidatePath("/", "layout");
     return null;
   } catch (err) {
@@ -37,7 +38,7 @@ export async function assignRole(_: ActionResult, form: FormData): Promise<Actio
   if (!email.success) return { ok: false, message: email.error.issues[0].message };
   if (!role.success) return { ok: false, message: "Choose a role." };
   let message = "";
-  const res = await guard(async (actorId, actorEmail) => {
+  const res = await guard(async (actorId, actorEmail, actorName) => {
     if (email.data === actorEmail.toLowerCase()) throw new AdminRuleError("You can't change your own role.");
     if (isBootstrapAdmin(email.data) && role.data !== "ADMIN") throw new AdminRuleError("This email is a permanent admin (ADMIN_EMAILS) and can't be demoted.");
     const existing = await prisma.user.findUnique({ where: { email: email.data } });
@@ -52,9 +53,17 @@ export async function assignRole(_: ActionResult, form: FormData): Promise<Actio
     });
     if (existing) await prisma.user.update({ where: { id: existing.id }, data: { role: role.data } });
     await audit(actorId, "admin_role_assigned", { email: email.data, role: role.data, from: existing?.role ?? null });
+    const info = ROLE_INFO[role.data];
+    if (!existing) {
+      // New person: invitation email (always sent).
+      const note = String(form.get("note") ?? "").slice(0, 120) || null;
+      await sendEmail({ to: email.data, kind: "invitation", ...invitationEmail({ to: email.data, roleLabel: info.label, roleDescription: info.description, invitedBy: actorName, note }) });
+    } else if (existing.role !== role.data && (await wantsEmail(existing.id, "account"))) {
+      await sendEmail({ to: existing.email, kind: "role_changed", userId: existing.id, ...roleChangedEmail({ name: existing.name, roleLabel: info.label, roleDescription: info.description, changedBy: actorName }) });
+    }
     message = existing
       ? `${email.data} is now ${ROLE_INFO[role.data].label}.`
-      : `${email.data} will become ${ROLE_INFO[role.data].label} when they first sign in.`;
+      : `Invitation sent to ${email.data}. They'll become ${ROLE_INFO[role.data].label} when they first sign in.`;
   });
   return res ?? { ok: true, message };
 }
@@ -71,7 +80,7 @@ export async function removeAssignment(email: string): Promise<ActionResult> {
 
 export async function setSuspended(userId: string, suspended: boolean): Promise<ActionResult> {
   let email = "";
-  const res = await guard(async (actorId) => {
+  const res = await guard(async (actorId, _email, actorName) => {
     if (userId === actorId) throw new AdminRuleError("You can't suspend yourself.");
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (suspended && isBootstrapAdmin(user.email)) throw new AdminRuleError("Permanent admins can't be suspended.");
@@ -79,6 +88,8 @@ export async function setSuspended(userId: string, suspended: boolean): Promise<
     await prisma.user.update({ where: { id: userId }, data: { suspended } });
     if (suspended) await prisma.session.deleteMany({ where: { userId } }); // signs them out everywhere
     await audit(actorId, suspended ? "admin_user_suspended" : "admin_user_restored", { email: user.email });
+    if (await wantsEmail(user.id, "account"))
+      await sendEmail({ to: user.email, kind: suspended ? "account_suspended" : "account_restored", userId: user.id, ...accessEmail({ name: user.name, suspended, changedBy: actorName }) });
   });
   return res ?? { ok: true, message: suspended ? `${email} is suspended and signed out.` : `${email} can sign in again.` };
 }
@@ -135,4 +146,27 @@ export async function updateSettings(_: ActionResult, form: FormData): Promise<A
     await audit(actorId, "admin_settings_updated", d);
   });
   return res ?? { ok: true, message: "Platform settings saved. They apply immediately." };
+}
+
+/** Sends the invitation email again for a pending assignment. */
+export async function resendInvitation(email: string): Promise<ActionResult> {
+  const parsed = emailSchema.safeParse(email);
+  if (!parsed.success) return { ok: false, message: "Invalid email." };
+  const res = await guard(async (actorId, _e, actorName) => {
+    const a = await prisma.roleAssignment.findUnique({ where: { email: parsed.data } });
+    if (!a) throw new AdminRuleError("No pending invitation for this email.");
+    const info = ROLE_INFO[a.role];
+    await sendEmail({ to: a.email, kind: "invitation", ...invitationEmail({ to: a.email, roleLabel: info.label, roleDescription: info.description, invitedBy: actorName, note: a.note }) });
+    await audit(actorId, "admin_invitation_resent", { email: a.email });
+  });
+  return res ?? { ok: true, message: `Invitation sent again to ${parsed.data}.` };
+}
+
+/** Retries a failed or skipped email from the admin Emails tab. */
+export async function retryEmail(id: string): Promise<ActionResult> {
+  let status = "";
+  const res = await guard(async () => {
+    status = (await resendEmail(id)).status;
+  });
+  return res ?? (status === "SENT" ? { ok: true, message: "Email sent." } : { ok: false, message: status === "SKIPPED" ? "Email isn't configured, so nothing was sent." : "Sending failed again. Check the error." });
 }

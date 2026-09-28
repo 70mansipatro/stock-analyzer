@@ -28,7 +28,8 @@ function getTransport(): Transporter | null {
       host: process.env.SMTP_HOST,
       port,
       secure: port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
+      // Gmail shows app passwords as "abcd efgh ijkl mnop"; the spaces aren't part of it.
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_HOST?.includes("gmail") ? process.env.SMTP_PASSWORD?.replace(/\s+/g, "") : process.env.SMTP_PASSWORD },
       // Never let a slow mail server hang a send forever.
       connectionTimeout: 15_000,
       greetingTimeout: 15_000,

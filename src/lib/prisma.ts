@@ -1,22 +1,27 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
 
-// Reuse one client across hot reloads in dev so we don't exhaust connections.
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+// Signature of the generated schema (every model and field). It changes whenever a migration
+// adds a table or column and `prisma generate` rewrites the client.
+const SCHEMA_SIGNATURE = JSON.stringify(
+  Object.entries(Prisma)
+    .filter(([k]) => k.endsWith("ScalarFieldEnum"))
+    .map(([k, v]) => [k, Object.keys(v as object)])
+    .sort(),
+);
 
-const create = () => new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+// Reuse one client across hot reloads in dev so we don't exhaust connections, but only while it
+// matches the current schema; otherwise a stale client rejects new fields ("Unknown argument ...").
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient; prismaSignature?: string };
 
-// After a migration adds a model, a client cached from before it would lack that model
-// ("Cannot read properties of undefined (reading 'findMany')"). Recreate it when that happens.
-const lowerFirst = (s: string) => s[0].toLowerCase() + s.slice(1);
-const isCurrent = (c: PrismaClient) => Object.values(Prisma.ModelName).every((m) => lowerFirst(m) in c);
-
-let client = globalForPrisma.prisma;
-if (client && !isCurrent(client)) {
-  void client.$disconnect().catch(() => {});
-  client = undefined;
+if (globalForPrisma.prisma && globalForPrisma.prismaSignature !== SCHEMA_SIGNATURE) {
+  void globalForPrisma.prisma.$disconnect().catch(() => {});
+  globalForPrisma.prisma = undefined;
 }
 
-export const prisma = client ?? create();
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaSignature = SCHEMA_SIGNATURE;
+}

@@ -65,8 +65,9 @@ async function deliver(id: string) {
   }
   let lastError = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
+    let info: { accepted?: unknown[]; response?: string; messageId?: string };
     try {
-      const info = await transport.sendMail({
+      info = await transport.sendMail({
         from: process.env.EMAIL_FROM || process.env.SMTP_USER,
         replyTo: process.env.EMAIL_REPLY_TO || process.env.SMTP_USER,
         to: row.to,
@@ -78,19 +79,27 @@ async function deliver(id: string) {
           "X-Entity-Ref-ID": row.id, // stops Gmail threading unrelated emails together
         },
       });
-      const accepted = (info.accepted ?? []).map(String).includes(row.to);
-      await prisma.emailOutbox.update({
-        where: { id },
-        data: accepted
-          ? { status: "SENT", sentAt: new Date(), attempts: row.attempts + attempt, error: null, messageId: info.messageId ?? null, response: String(info.response ?? "").slice(0, 300) }
-          : { status: "FAILED", attempts: row.attempts + attempt, error: `Rejected by mail server: ${String(info.response ?? "")}`.slice(0, 500), response: String(info.response ?? "").slice(0, 300) },
-      });
-      return;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       console.warn(`email attempt ${attempt} failed`, row.kind, row.to, lastError);
       if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
+      continue;
     }
+    // The message has left: from here on, a bookkeeping error must never cause a resend.
+    const accepted = (info.accepted ?? []).map(String).includes(row.to);
+    const response = String(info.response ?? "").slice(0, 300);
+    try {
+      await prisma.emailOutbox.update({
+        where: { id },
+        data: accepted
+          ? { status: "SENT", sentAt: new Date(), attempts: row.attempts + attempt, error: null, messageId: info.messageId ?? null, response }
+          : { status: "FAILED", attempts: row.attempts + attempt, error: `Rejected by mail server: ${response}`.slice(0, 500), response },
+      });
+    } catch (err) {
+      console.error("email sent but status update failed", row.kind, row.to, err);
+      await prisma.emailOutbox.update({ where: { id }, data: { status: accepted ? "SENT" : "FAILED", sentAt: new Date(), attempts: row.attempts + attempt } }).catch(() => {});
+    }
+    return;
   }
   console.error("email failed", row.kind, row.to, lastError);
   await prisma.emailOutbox.update({ where: { id }, data: { status: "FAILED", attempts: row.attempts + 3, error: lastError.slice(0, 500) } });

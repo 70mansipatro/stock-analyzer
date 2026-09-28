@@ -5,6 +5,7 @@ import { analyzeStock } from "@/lib/analysis";
 import { getQuote, getTopStocks, MarketError, searchSymbols, TOP_CATEGORY_LABELS, type TopCategory } from "@/lib/market";
 import { getNewsInsight } from "@/lib/insights";
 import { predictStock } from "@/lib/prediction";
+import { emailReport, ReportError, REPORT_TYPES } from "@/lib/reports";
 import { can, type AppRole } from "@/lib/rbac";
 import type { PlatformSettings } from "@/lib/settings";
 import { inCcy, USD, type DisplayCurrency } from "@/lib/display-currency";
@@ -24,7 +25,7 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | { error: string }> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof MarketError || err instanceof TradeError) return { error: err.message };
+    if (err instanceof MarketError || err instanceof TradeError || err instanceof ReportError) return { error: err.message };
     console.error("tool failed", err);
     return { error: "Market data is unavailable right now. Please try again shortly." };
   }
@@ -33,7 +34,7 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | { error: string }> {
 /**
  * Tools are built per request so `userId` comes from the verified session, never from model output.
  */
-export function buildTools(userId: string, settings: PlatformSettings, role: AppRole) {
+export function buildTools(userId: string, settings: PlatformSettings, role: AppRole, ccy: DisplayCurrency = USD) {
   const tools = {
     getTopStocks: tool({
       description: "List today's top US stocks: most active, biggest gainers, or biggest losers.",
@@ -92,6 +93,21 @@ export function buildTools(userId: string, settings: PlatformSettings, role: App
       description: "Latest news headlines for a stock, each labelled positive, negative or neutral by AI, with an overall tone.",
       inputSchema: z.object({ symbol: symbolField }),
       execute: ({ symbol }) => safe(() => getNewsInsight(symbol)),
+    }),
+
+    emailReport: tool({
+      description:
+        "Email the user a professional report built from live data. Always sent to the user's own account email (you can't choose a recipient). " +
+        "Types: top_gainers, top_losers, most_active (US market movers), portfolio (their holdings), stock_analysis / forecast / news (need a symbol; use searchStocks first). " +
+        "Optionally add a 1-3 sentence plain summary of the key point.",
+      inputSchema: z.object({
+        type: z.enum(REPORT_TYPES),
+        symbol: symbolField.optional(),
+        horizonDays: z.number().int().min(5).max(90).optional(),
+        count: z.number().int().min(3).max(15).optional(),
+        summary: z.string().max(500).optional().describe("Short plain-English summary to include; numbers must come from tool results."),
+      }),
+      execute: (input) => safe(() => emailReport(userId, input, ccy)),
     }),
 
     getPortfolio: tool({

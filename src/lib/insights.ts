@@ -130,7 +130,7 @@ export async function reviewPortfolio(userId: string): Promise<PortfolioReview> 
     model: chatModel(),
     temperature: 0.2,
     instructions:
-      "You review a PAPER (simulated) stock portfolio for education. Use only the numbers in the data. " +
+      "You review a VIRTUAL (simulated) stock portfolio for education. Use only the numbers in the data. " +
       "Score risk from concentration, sector mix, volatility and cash buffer. " +
       "Never tell the user to buy or sell a specific stock, never promise returns, never say anything is risk-free. " +
       "Write plain, short sentences.",

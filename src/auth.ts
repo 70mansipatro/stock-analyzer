@@ -24,6 +24,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Suspended accounts can't sign in.
     async signIn({ user }) {
       if (!user.email) return false;
+      const blocked = await prisma.blockedEmail.findUnique({ where: { email: user.email.toLowerCase() } });
+      if (blocked && !bootstrapAdmin(user.email)) return "/login?error=Removed";
       const existing = await prisma.user.findUnique({ where: { email: user.email }, select: { suspended: true } });
       if (existing?.suspended && !bootstrapAdmin(user.email)) return "/login?error=Suspended";
       return true;

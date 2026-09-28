@@ -8,12 +8,12 @@ import { prisma } from "@/lib/prisma";
  * works on machines without email setup and admins can still see what would have been sent.
  */
 
-export type EmailCategory = "orders" | "alerts" | "account";
+export type EmailCategory = "orders" | "alerts";
 export const EMAIL_CATEGORIES: { id: EmailCategory; label: string; description: string }[] = [
   { id: "orders", label: "Orders", description: "Confirmation when a trade is filled, cancelled or expires." },
   { id: "alerts", label: "Price alerts", description: "When one of your price or condition alerts fires." },
-  { id: "account", label: "Account", description: "Role changes and access updates from an admin." },
 ];
+// Security notices (invitations, role and access changes, removal) are always sent and have no switch.
 
 export function emailConfigured() {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD);
@@ -29,6 +29,10 @@ function getTransport(): Transporter | null {
       port,
       secure: port === 465,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
+      // Never let a slow mail server hang a send forever.
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 30_000,
     });
   }
   return transporter;
@@ -66,6 +70,7 @@ async function deliver(id: string) {
       return;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
+      console.warn(`email attempt ${attempt} failed`, row.kind, row.to, lastError);
       if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
     }
   }
@@ -78,10 +83,28 @@ export async function sendEmail(msg: { to: string; kind: string; subject: string
   try {
     const row = await prisma.emailOutbox.create({ data: { ...msg, to: msg.to.toLowerCase(), userId: msg.userId ?? null } });
     void deliver(row.id).catch((err) => console.error("email deliver crashed", err));
+    void retryStuck();
     return row.id;
   } catch (err) {
     console.error("email queue failed", err);
     return null;
+  }
+}
+
+/** Safety net: emails still PENDING after 2 minutes (e.g. the server restarted mid-send) are tried again. */
+let lastSweep = 0;
+async function retryStuck() {
+  if (Date.now() - lastSweep < 60_000) return;
+  lastSweep = Date.now();
+  try {
+    const stuck = await prisma.emailOutbox.findMany({
+      where: { status: "PENDING", createdAt: { lt: new Date(Date.now() - 2 * 60_000) }, attempts: { lt: 6 } },
+      select: { id: true },
+      take: 20,
+    });
+    for (const s of stuck) await deliver(s.id);
+  } catch (err) {
+    console.error("email sweep failed", err);
   }
 }
 
@@ -99,26 +122,76 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 type Row = [label: string, value: string];
 
 /** One branded, mobile-friendly layout for every email (inline styles: mail apps ignore stylesheets). */
-function layout(o: { preheader: string; title: string; intro: string; rows?: Row[]; button?: { label: string; href: string }; note?: string; footer?: string }) {
+export type ReportTable = { columns: { label: string; align?: "left" | "right" }[]; rows: { cells: string[]; tone?: ("up" | "down" | null)[] }[] };
+export type ReportStat = { label: string; value: string; tone?: "up" | "down" | null };
+
+function statsHtml(stats: ReportStat[]) {
+  const color = (t?: "up" | "down" | null) => (t === "up" ? "#059669" : t === "down" ? "#dc2626" : "#0f172a");
+  const cells = stats
+    .map((st) => `<td style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;vertical-align:top"><div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#64748b">${esc(st.label)}</div><div style="margin-top:4px;font-size:18px;font-weight:700;color:${color(st.tone)}">${esc(st.value)}</div></td>`)
+    .join('<td style="width:8px"></td>');
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate"><tr>${cells}</tr></table>`;
+}
+
+function tableHtml(t: ReportTable) {
+  const head = t.columns.map((c) => `<th style="padding:10px 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#64748b;font-weight:600;text-align:${c.align ?? "left"};border-bottom:1px solid #e2e8f0">${esc(c.label)}</th>`).join("");
+  const body = t.rows
+    .map((r, i) =>
+      `<tr style="background:${i % 2 ? "#f8fafc" : "#ffffff"}">${r.cells
+        .map((cell, j) => {
+          const tone = r.tone?.[j];
+          const color = tone === "up" ? "#059669" : tone === "down" ? "#dc2626" : "#0f172a";
+          return `<td style="padding:10px 8px;font-size:14px;color:${color};${j === 0 ? "font-weight:600;" : ""}text-align:${t.columns[j]?.align ?? "left"};border-bottom:1px solid #f1f5f9">${esc(cell)}</td>`;
+        })
+        .join("")}</tr>`,
+    )
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function layout(o: {
+  preheader: string;
+  title: string;
+  intro: string;
+  eyebrow?: string;
+  stats?: ReportStat[];
+  table?: ReportTable;
+  highlights?: string[];
+  rows?: Row[];
+  button?: { label: string; href: string };
+  note?: string;
+  footer?: string;
+}) {
   const rows = (o.rows ?? [])
     .map(([k, v]) => `<tr><td style="padding:8px 0;color:#64748b;font-size:14px">${esc(k)}</td><td style="padding:8px 0;text-align:right;color:#0f172a;font-size:14px;font-weight:600">${esc(v)}</td></tr>`)
     .join("");
   const html = `<!doctype html><html><body style="margin:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
 <span style="display:none;max-height:0;overflow:hidden">${esc(o.preheader)}</span>
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:32px 12px"><tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden">
 <tr><td style="background:linear-gradient(90deg,#10b981,#0ea5e9,#8b5cf6);height:4px"></td></tr>
 <tr><td style="padding:28px 28px 8px">
   <div style="font-size:14px;font-weight:700;color:#0f172a">📈 Stock Analyzer</div>
-  <h1 style="margin:18px 0 8px;font-size:22px;line-height:1.3;color:#0f172a">${esc(o.title)}</h1>
+  ${o.eyebrow ? `<div style="margin-top:18px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#10b981;font-weight:700">${esc(o.eyebrow)}</div>` : ""}
+  <h1 style="margin:${o.eyebrow ? "6px" : "18px"} 0 8px;font-size:22px;line-height:1.3;color:#0f172a">${esc(o.title)}</h1>
   <p style="margin:0;color:#334155;font-size:15px;line-height:1.6">${esc(o.intro)}</p>
 </td></tr>
+${o.stats?.length ? `<tr><td style="padding:18px 28px 0">${statsHtml(o.stats)}</td></tr>` : ""}
+${o.table ? `<tr><td style="padding:18px 28px 0">${tableHtml(o.table)}</td></tr>` : ""}
+${o.highlights?.length ? `<tr><td style="padding:18px 28px 0"><div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#64748b;font-weight:600;margin-bottom:6px">Highlights</div><ul style="margin:0;padding-left:18px;color:#334155;font-size:14px;line-height:1.7">${o.highlights.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></td></tr>` : ""}
 ${rows ? `<tr><td style="padding:12px 28px 0"><table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0">${rows}</table></td></tr>` : ""}
 ${o.note ? `<tr><td style="padding:16px 28px 0"><div style="background:#f1f5f9;border-radius:10px;padding:12px 14px;color:#334155;font-size:14px">${esc(o.note)}</div></td></tr>` : ""}
 ${o.button ? `<tr><td style="padding:24px 28px 4px"><a href="${esc(o.button.href)}" style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px">${esc(o.button.label)}</a></td></tr>` : ""}
 <tr><td style="padding:24px 28px 28px;color:#94a3b8;font-size:12px;line-height:1.6">${esc(o.footer ?? "Virtual trading only, no real money. Not financial advice.")}<br><a href="${appUrl()}/settings#notifications" style="color:#64748b">Manage email settings</a></td></tr>
 </table></td></tr></table></body></html>`;
-  const text = [o.title, "", o.intro, ...(o.rows ?? []).map(([k, v]) => `${k}: ${v}`), o.note ? `\n${o.note}` : "", o.button ? `\n${o.button.label}: ${o.button.href}` : "", "", `Manage email settings: ${appUrl()}/settings`].join("\n");
+  const text = [
+    o.title,
+    "",
+    o.intro,
+    ...(o.stats ?? []).map((st) => `${st.label}: ${st.value}`),
+    ...(o.table ? ["", o.table.columns.map((c) => c.label).join(" | "), ...o.table.rows.map((r) => r.cells.join(" | "))] : []),
+    ...(o.highlights?.length ? ["", "Highlights:", ...o.highlights.map((h) => `- ${h}`)] : []),
+    ...(o.rows ?? []).map(([k, v]) => `${k}: ${v}`), o.note ? `\n${o.note}` : "", o.button ? `\n${o.button.label}: ${o.button.href}` : "", "", `Manage email settings: ${appUrl()}/settings`].join("\n");
   return { html, text };
 }
 
@@ -197,3 +270,73 @@ export function orderFilledEmail(o: {
     }),
   };
 }
+
+export function accountResetEmail(o: { name?: string | null; cashLabel: string; changedBy: string }) {
+  return {
+    subject: "Your Stock Analyzer account was reset",
+    ...layout({
+      preheader: `Your virtual account was reset to ${o.cashLabel}.`,
+      title: "Your account was reset",
+      intro: `Hi ${o.name?.split(" ")[0] ?? "there"}, ${o.changedBy} reset your virtual trading account. Your holdings and trade history were cleared.`,
+      rows: [["New cash balance", o.cashLabel]],
+      button: { label: "Open Stock Analyzer", href: appUrl() },
+    }),
+  };
+}
+
+export function accountRemovedEmail(o: { name?: string | null; changedBy: string; reason?: string | null }) {
+  return {
+    subject: "Your Stock Analyzer account has been removed",
+    ...layout({
+      preheader: "Your account and its data were removed.",
+      title: "Your account has been removed",
+      intro: `Hi ${o.name?.split(" ")[0] ?? "there"}, ${o.changedBy} removed your Stock Analyzer account. Your portfolio, trades and settings have been deleted and you can no longer sign in.`,
+      note: o.reason ? `Reason: ${o.reason}` : undefined,
+      footer: "If you think this is a mistake, reply to this email or contact the administrator who manages your access.",
+    }),
+  };
+}
+
+export function invitationWithdrawnEmail(o: { roleLabel: string; changedBy: string }) {
+  return {
+    subject: "Your Stock Analyzer invitation was withdrawn",
+    ...layout({
+      preheader: "An admin withdrew your invitation.",
+      title: "Your invitation was withdrawn",
+      intro: `${o.changedBy} withdrew your invitation to join Stock Analyzer as ${o.roleLabel}. No action is needed.`,
+      footer: "If you still need access, contact the administrator who invited you.",
+    }),
+  };
+}
+
+/** A report the user asked the AI assistant to email them. */
+export function reportEmail(o: {
+  name?: string | null;
+  eyebrow: string;
+  title: string;
+  intro: string;
+  stats?: ReportStat[];
+  table?: ReportTable;
+  highlights?: string[];
+  note?: string;
+  button: { label: string; href: string };
+  asOf: Date;
+}) {
+  return {
+    subject: `${o.title} · ${o.asOf.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+    ...layout({
+      preheader: o.intro,
+      eyebrow: o.eyebrow,
+      title: o.title,
+      intro: `Hi ${o.name?.split(" ")[0] ?? "there"}, ${o.intro}`,
+      stats: o.stats,
+      table: o.table,
+      highlights: o.highlights,
+      note: o.note,
+      button: o.button,
+      footer: `Requested from the AI assistant · data as of ${o.asOf.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}. Market data may be delayed. Virtual trading only, not financial advice.`,
+    }),
+  };
+}
+
+export { appUrl };

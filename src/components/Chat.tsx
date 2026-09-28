@@ -34,6 +34,7 @@ const TOOL_LABELS: Record<string, string> = {
   analyzeStock: "Running technical analysis",
   predictStock: "Building forecast",
   getNews: "Reading the latest headlines",
+  emailReport: "Preparing your email report",
   getPortfolio: "Loading your portfolio",
   placeTrade: "Preparing order",
 };
@@ -439,6 +440,20 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
             ))}
           </ul>
         </ToolCard>
+      );
+    }
+    case "tool-emailReport": {
+      const e = part.output as Exclude<typeof part.output, { error: string }> | undefined;
+      if (!e) return null;
+      return (
+        <div className="flex max-w-md items-center gap-3 rounded-xl border border-sky-500/30 bg-sky-500/5 p-3 text-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-500/15 text-lg">✉</span>
+          <span className="min-w-0">
+            <span className="block font-medium text-sky-300">Report emailed</span>
+            <span className="block truncate text-slate-300">{e.subject}</span>
+            <span className="block truncate text-xs text-slate-500">to {e.to}</span>
+          </span>
+        </div>
       );
     }
     case "tool-getPortfolio": {

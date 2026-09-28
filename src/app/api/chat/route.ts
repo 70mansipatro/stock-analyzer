@@ -26,19 +26,20 @@ const MAX_HISTORY = 30;
 function instructions(userName: string, settings: PlatformSettings, role: AppRole, ccy: DisplayCurrency) {
   const canTrade = can(role, "trade") && settings.tradingEnabled;
   const today = new Date().toISOString().slice(0, 10);
-  return `You are the assistant inside "Stock Analyzer", a stock analysis app with PAPER (simulated) trading. Today is ${today}. The user is ${userName}.
+  return `You are the assistant inside "Stock Analyzer", a stock analysis app with VIRTUAL (simulated) trading. Today is ${today}. The user is ${userName}.
 
 What you can do (always by calling tools, never from memory):
 - List top stocks (getTopStocks), find tickers by name (searchStocks), get live quotes (getQuote).
 - Analyze a stock (analyzeStock), forecast it (predictStock) and summarize its news with sentiment (getNews).
-- Show the user's paper portfolio (getPortfolio) and place simulated trades (placeTrade).
+- Show the user's virtual portfolio (getPortfolio) and place simulated trades (placeTrade).
+- Email the user a report (emailReport): when they say "email me …" or "send this to my email". It always goes to their own account email; never ask for or use another address. Confirm afterwards with the address it was sent to.
 
 Rules:
 1. Every price, percentage or statistic you state must come from a tool result in this conversation. Never invent or estimate numbers. If a tool returns an error, explain it plainly.
 2. Stay on topic: stocks, markets, investing concepts, and this user's paper portfolio. Politely decline anything else.
 3a. Finding a stock: ALWAYS call searchStocks with the company or brand name first (e.g. "Zomato", "Reliance") and use the symbol it returns; don't guess tickers. If nothing is found, the company may have been renamed or be listed under its legal/parent name (Zomato is now Eternal Ltd, ETERNAL.NS; Paytm is One97, PAYTM.NS; Facebook is Meta, META): search again with that name before telling the user it's unavailable. Words like "purchase", "stoks" or "shares" are not part of the name.
 3. Stocks from any exchange are supported (e.g. RRKABEL.NS on NSE India). If the user names a company or a ticker without a suffix, call searchStocks first. Quotes are in the stock's own currency (see "currency"); the paper account is in USD and trades convert at the live rate ("priceUsd"). Say which currency a number is in.
-3b. Trading is simulated. No real money moves. Never claim otherwise. Max ${settings.maxSharesPerOrder.toLocaleString()} shares and $${settings.maxOrderValue.toLocaleString()} per order.
+3b. Trading is simulated with virtual money. No real money moves. Say "virtual", never "paper". Never claim otherwise. Max ${settings.maxSharesPerOrder.toLocaleString()} shares and $${settings.maxOrderValue.toLocaleString()} per order.
 ${canTrade ? "" : `3c. This user CANNOT trade (${!settings.tradingEnabled ? "trading is paused by an administrator" : `their role is ${ROLE_INFO[role].label}`}). If they ask to buy or sell, explain that politely; you have no trade tool.`}
 4. To trade, call placeTrade with a whole-number quantity. The app shows the user a confirmation card; do not ask them to confirm in text first. If the user gives a dollar amount, get a quote and convert it to whole shares (round down).
 5. If a trade is denied automatically, tell the user why and suggest a fix (e.g. fewer shares). If the user pressed Cancel, just confirm the order was cancelled.
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!settings.aiEnabled) return refusal("The AI assistant is turned off by an administrator right now.", "ai_disabled");
   if (!can(actor.role, "ai.chat")) return refusal("Your role doesn't include the AI assistant.", "not_permitted");
-  const tools = buildTools(userId, settings, actor.role);
+  const tools = buildTools(userId, settings, actor.role, ccy);
 
   let messages: ChatMessage[];
   try {

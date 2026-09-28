@@ -1,7 +1,7 @@
 import { Activity, Bot, Coins, LayoutDashboard, Mail, ShieldAlert, ShieldCheck, Sparkles, UserCog, Users } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AssignRoleForm, ReadOnlyBanner, RemoveAssignmentButton, ResendInvitationButton, RetryEmailButton, RoleBadge, UserActions } from "@/components/admin/AdminControls";
+import { AssignRoleForm, ReadOnlyBanner, RemoveAssignmentButton, ResendInvitationButton, RetryEmailButton, RoleBadge, UnblockButton, UserActions } from "@/components/admin/AdminControls";
 import { emailConfigured } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 import { StackedBars } from "@/components/admin/AdminCharts";
@@ -58,6 +58,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     tab === "users" ? listAssignments() : Promise.resolve([]),
     getDisplayCurrency(),
   ]);
+  const blocked = tab === "users" ? await prisma.blockedEmail.findMany({ orderBy: { createdAt: "desc" } }) : [];
   const emails = tab === "emails" ? await prisma.emailOutbox.findMany({ orderBy: { createdAt: "desc" }, take: 60 }) : [];
   const money = (usd: number) => inCcy(usd, cur);
   const roleCounts = ROLES.map((r) => ({ role: r, n: users.filter((u) => u.role === r).length }));
@@ -211,6 +212,24 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               </table>
             </div>
           </Card>
+
+          {blocked.length > 0 && (
+            <Card title={`Removed accounts (${blocked.length})`} subtitle="These emails can't sign in. Inviting them again also restores access." icon={Users} tone="rose">
+              <ul className="divide-y divide-ink/5">
+                {blocked.map((b) => (
+                  <li key={b.email} className="flex items-center gap-3 py-2.5 text-sm">
+                    <span className="min-w-0 flex-1 truncate">
+                      {b.name ? `${b.name} · ` : ""}
+                      {b.email}
+                    </span>
+                    {b.reason && <span className="hidden max-w-xs truncate text-xs text-slate-500 md:block">{b.reason}</span>}
+                    <span className="text-xs text-slate-500">{ago(b.createdAt.toISOString())}</span>
+                    <UnblockButton email={b.email} readOnly={readOnly} />
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card title="What each role can do" icon={ShieldCheck} tone="sky">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

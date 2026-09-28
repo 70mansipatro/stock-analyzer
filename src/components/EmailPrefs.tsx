@@ -4,7 +4,7 @@ import { useOptimistic, useTransition } from "react";
 import { setEmailPref } from "@/app/(app)/settings/actions";
 import { toast } from "@/lib/toast";
 
-type Cat = { id: "orders" | "alerts" | "account"; label: string; description: string };
+type Cat = { id: "orders" | "alerts"; label: string; description: string };
 
 export function EmailPrefs({ categories, prefs, email, configured }: { categories: Cat[]; prefs: Record<string, boolean>; email: string; configured: boolean }) {
   const [state, setOptimistic] = useOptimistic(prefs, (cur, [id, on]: [string, boolean]) => ({ ...cur, [id]: on }));
@@ -15,6 +15,7 @@ export function EmailPrefs({ categories, prefs, email, configured }: { categorie
         Emails go to <b className="text-slate-200">{email}</b>.
         {!configured && <span className="text-amber-300"> Email sending isn&apos;t set up on this server yet, so nothing will be delivered.</span>}
       </p>
+      <p className="text-xs text-slate-500">Security emails (invitations, role and access changes, account removal) and reports you request from the AI assistant are always sent.</p>
       {categories.map((c) => {
         const on = state[c.id] !== false;
         return (

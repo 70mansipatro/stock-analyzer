@@ -1,8 +1,8 @@
 "use client";
 
-import { Ban, Check, Lock, RotateCcw, Send, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Ban, Check, Lock, RotateCcw, Send, ShieldCheck, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
-import { assignRole, removeAssignment, resendInvitation, resetAccount, retryEmail, setSuspended, updateSettings, type ActionResult } from "@/app/(app)/admin/actions";
+import { assignRole, removeAssignment, removeUser, resendInvitation, resetAccount, retryEmail, setSuspended, unblockEmail, updateSettings, type ActionResult } from "@/app/(app)/admin/actions";
 import { ROLE_INFO, ROLES, type AppRole } from "@/lib/rbac";
 import { toast } from "@/lib/toast";
 
@@ -89,7 +89,8 @@ export function AssignRoleForm({ readOnly }: { readOnly: boolean }) {
 /** Role dropdown + suspend + reset for one user row. */
 export function UserActions({ userId, email, role, suspended, isSelf, readOnly }: { userId: string; email: string; role: AppRole; suspended: boolean; isSelf: boolean; readOnly: boolean }) {
   const [pending, start] = useTransition();
-  const [confirm, setConfirm] = useState<null | "reset" | "suspend">(null);
+  const [confirm, setConfirm] = useState<null | "reset" | "suspend" | "remove">(null);
+  const [reason, setReason] = useState("");
   const locked = readOnly || isSelf;
 
   const changeRole = (next: AppRole) =>
@@ -117,7 +118,33 @@ export function UserActions({ userId, email, role, suspended, isSelf, readOnly }
         ))}
       </select>
 
-      {confirm ? (
+      {confirm === "remove" ? (
+        <span className="flex flex-wrap items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-xs text-red-300">
+          Remove &amp; delete all data?
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={200}
+            placeholder="Reason (optional, emailed)"
+            className="w-44 rounded border border-red-500/30 bg-transparent px-1.5 py-0.5 text-xs text-slate-100 placeholder:text-red-300/60 focus:outline-none"
+          />
+          <button
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                report(await removeUser(userId, reason), "User removed");
+                setConfirm(null);
+              })
+            }
+            className="rounded px-1.5 py-0.5 font-semibold text-red-200 hover:bg-red-500/20"
+          >
+            Remove
+          </button>
+          <button onClick={() => setConfirm(null)} className="rounded px-1.5 py-0.5 hover:bg-red-500/20">
+            Cancel
+          </button>
+        </span>
+      ) : confirm ? (
         <span className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
           {confirm === "reset" ? "Reset holdings & cash?" : suspended ? "Restore access?" : "Suspend & sign out?"}
           <button
@@ -155,6 +182,15 @@ export function UserActions({ userId, email, role, suspended, isSelf, readOnly }
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-30"
           >
             <RotateCcw className="h-4 w-4" />
+          </button>
+          <button
+            disabled={locked || pending}
+            onClick={() => setConfirm("remove")}
+            title="Remove from the platform"
+            aria-label={`Remove ${email}`}
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-30"
+          >
+            <UserMinus className="h-4 w-4" />
           </button>
         </>
       )}
@@ -262,6 +298,19 @@ export function RetryEmailButton({ id, readOnly }: { id: string; readOnly: boole
       className="rounded-lg px-2 py-1 text-xs text-sky-300 transition hover:bg-sky-500/10 disabled:opacity-30"
     >
       {pending ? "Sending…" : "Retry"}
+    </button>
+  );
+}
+
+export function UnblockButton({ email, readOnly }: { email: string; readOnly: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      disabled={readOnly || pending}
+      onClick={() => start(async () => report(await unblockEmail(email), "Access allowed"))}
+      className="rounded-lg px-2 py-1 text-xs text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-30"
+    >
+      {pending ? "…" : "Allow again"}
     </button>
   );
 }

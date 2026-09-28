@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import type { Role } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
-import { accessEmail, invitationEmail, resendEmail, roleChangedEmail, sendEmail, wantsEmail } from "@/lib/email";
+import { accessEmail, accountRemovedEmail, accountResetEmail, invitationEmail, invitationWithdrawnEmail, resendEmail, roleChangedEmail, sendEmail } from "@/lib/email";
 import { AccessError, isBootstrapAdmin, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { ROLE_INFO, ROLES } from "@/lib/rbac";
@@ -46,6 +46,7 @@ export async function assignRole(_: ActionResult, form: FormData): Promise<Actio
       const admins = await prisma.user.count({ where: { role: "ADMIN", suspended: false } });
       if (admins <= 1) throw new AdminRuleError("There must be at least one admin.");
     }
+    await prisma.blockedEmail.deleteMany({ where: { email: email.data } }); // inviting someone again lifts a removal
     await prisma.roleAssignment.upsert({
       where: { email: email.data },
       create: { email: email.data, role: role.data, assignedById: actorId, note: String(form.get("note") ?? "").slice(0, 120) || null },
@@ -58,7 +59,7 @@ export async function assignRole(_: ActionResult, form: FormData): Promise<Actio
       // New person: invitation email (always sent).
       const note = String(form.get("note") ?? "").slice(0, 120) || null;
       await sendEmail({ to: email.data, kind: "invitation", ...invitationEmail({ to: email.data, roleLabel: info.label, roleDescription: info.description, invitedBy: actorName, note }) });
-    } else if (existing.role !== role.data && (await wantsEmail(existing.id, "account"))) {
+    } else if (existing.role !== role.data) {
       await sendEmail({ to: existing.email, kind: "role_changed", userId: existing.id, ...roleChangedEmail({ name: existing.name, roleLabel: info.label, roleDescription: info.description, changedBy: actorName }) });
     }
     message = existing
@@ -71,11 +72,14 @@ export async function assignRole(_: ActionResult, form: FormData): Promise<Actio
 export async function removeAssignment(email: string): Promise<ActionResult> {
   const parsed = emailSchema.safeParse(email);
   if (!parsed.success) return { ok: false, message: "Invalid email." };
-  const res = await guard(async (actorId) => {
+  const res = await guard(async (actorId, _e, actorName) => {
+    const a = await prisma.roleAssignment.findUnique({ where: { email: parsed.data } });
     await prisma.roleAssignment.deleteMany({ where: { email: parsed.data } });
     await audit(actorId, "admin_assignment_removed", { email: parsed.data });
+    const joined = await prisma.user.findUnique({ where: { email: parsed.data }, select: { id: true } });
+    if (a && !joined) await sendEmail({ to: parsed.data, kind: "invitation_withdrawn", ...invitationWithdrawnEmail({ roleLabel: ROLE_INFO[a.role].label, changedBy: actorName }) });
   });
-  return res ?? { ok: true, message: `Removed the pending role for ${parsed.data}.` };
+  return res ?? { ok: true, message: `Invitation withdrawn and ${parsed.data} notified.` };
 }
 
 export async function setSuspended(userId: string, suspended: boolean): Promise<ActionResult> {
@@ -88,8 +92,7 @@ export async function setSuspended(userId: string, suspended: boolean): Promise<
     await prisma.user.update({ where: { id: userId }, data: { suspended } });
     if (suspended) await prisma.session.deleteMany({ where: { userId } }); // signs them out everywhere
     await audit(actorId, suspended ? "admin_user_suspended" : "admin_user_restored", { email: user.email });
-    if (await wantsEmail(user.id, "account"))
-      await sendEmail({ to: user.email, kind: suspended ? "account_suspended" : "account_restored", userId: user.id, ...accessEmail({ name: user.name, suspended, changedBy: actorName }) });
+    await sendEmail({ to: user.email, kind: suspended ? "account_suspended" : "account_restored", userId: user.id, ...accessEmail({ name: user.name, suspended, changedBy: actorName }) });
   });
   return res ?? { ok: true, message: suspended ? `${email} is suspended and signed out.` : `${email} can sign in again.` };
 }
@@ -98,7 +101,7 @@ export async function setSuspended(userId: string, suspended: boolean): Promise<
 export async function resetAccount(userId: string): Promise<ActionResult> {
   let email = "";
   let amount = 0;
-  const res = await guard(async (actorId) => {
+  const res = await guard(async (actorId, _e, actorName) => {
     const settings = await getSettings();
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     email = user.email;
@@ -110,6 +113,7 @@ export async function resetAccount(userId: string): Promise<ActionResult> {
       prisma.user.update({ where: { id: userId }, data: { cashBalance: cash, startingCash: cash } }),
     ]);
     await audit(actorId, "admin_account_reset", { email: user.email, startingCash: settings.startingCash });
+    await sendEmail({ to: user.email, kind: "account_reset", userId: user.id, ...accountResetEmail({ name: user.name, cashLabel: `$${settings.startingCash.toLocaleString()}`, changedBy: actorName }) });
   });
   return res ?? { ok: true, message: `Reset ${email} to $${amount.toLocaleString()} of virtual cash.` };
 }
@@ -169,4 +173,44 @@ export async function retryEmail(id: string): Promise<ActionResult> {
     status = (await resendEmail(id)).status;
   });
   return res ?? (status === "SENT" ? { ok: true, message: "Email sent." } : { ok: false, message: status === "SKIPPED" ? "Email isn't configured, so nothing was sent." : "Sending failed again. Check the error." });
+}
+
+/** Removes a user from the platform: deletes their data, blocks the email, signs them out and emails them. */
+export async function removeUser(userId: string, reason?: string): Promise<ActionResult> {
+  let email = "";
+  const res = await guard(async (actorId, _e, actorName) => {
+    if (userId === actorId) throw new AdminRuleError("You can't remove yourself.");
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (isBootstrapAdmin(user.email)) throw new AdminRuleError("Permanent admins can't be removed.");
+    if (user.role === "ADMIN") {
+      const admins = await prisma.user.count({ where: { role: "ADMIN", suspended: false } });
+      if (admins <= 1) throw new AdminRuleError("There must be at least one admin.");
+    }
+    email = user.email;
+    const note = reason?.trim().slice(0, 200) || null;
+    // Queue the email first: it doesn't depend on the user row.
+    await sendEmail({ to: user.email, kind: "account_removed", ...accountRemovedEmail({ name: user.name, changedBy: actorName, reason: note }) });
+    await prisma.$transaction([
+      prisma.blockedEmail.upsert({
+        where: { email: user.email.toLowerCase() },
+        create: { email: user.email.toLowerCase(), name: user.name, reason: note, blockedById: actorId },
+        update: { name: user.name, reason: note, blockedById: actorId },
+      }),
+      prisma.roleAssignment.deleteMany({ where: { email: user.email.toLowerCase() } }),
+      prisma.user.delete({ where: { id: userId } }), // holdings, trades, sessions and accounts cascade
+    ]);
+    await audit(actorId, "admin_user_removed", { email: user.email, reason: note });
+  });
+  return res ?? { ok: true, message: `${email} was removed and notified.` };
+}
+
+/** Lets a removed email sign in again (a new, empty account). */
+export async function unblockEmail(email: string): Promise<ActionResult> {
+  const parsed = emailSchema.safeParse(email);
+  if (!parsed.success) return { ok: false, message: "Invalid email." };
+  const res = await guard(async (actorId) => {
+    await prisma.blockedEmail.deleteMany({ where: { email: parsed.data } });
+    await audit(actorId, "admin_email_unblocked", { email: parsed.data });
+  });
+  return res ?? { ok: true, message: `${parsed.data} can sign in again.` };
 }

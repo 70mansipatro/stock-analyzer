@@ -189,3 +189,12 @@ model EmailOutbox {
 
   @@index([createdAt])
 }
+
+// Emails an admin removed from the platform; they can't sign in again until an admin allows them.
+model BlockedEmail {
+  email       String   @id
+  name        String?
+  reason      String?
+  blockedById String?
+  createdAt   DateTime @default(now())
+}

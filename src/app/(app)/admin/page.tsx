@@ -403,7 +403,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               Email sending isn&apos;t set up. Emails are recorded below as <b>Skipped</b>. Add the SMTP_* settings to .env.local and restart to start delivering.
             </div>
           )}
-          <Card title="Recent emails" subtitle="Invitations, role changes and order confirmations (latest 60)" icon={Mail} tone="sky">
+          <Card title="Recent emails" subtitle="Welcome, invitation, access and order emails, and AI reports (latest 60). Sent = accepted by the mail server; if it isn't in the inbox, check Spam." icon={Mail} tone="sky">
             {emails.length === 0 ? (
               <p className="text-sm text-slate-400">No emails yet. Assign a role to an email or place a trade to send one.</p>
             ) : (
@@ -436,6 +436,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                             {e.status === "SENT" ? "Sent" : e.status === "FAILED" ? "Failed" : e.status === "SKIPPED" ? "Skipped" : "Sending"}
                           </span>
                           {e.error && <span className="block max-w-[16rem] truncate text-[11px] text-slate-500">{e.error}</span>}
+                          {e.status === "SENT" && e.response && (
+                            <span className="block max-w-[16rem] truncate text-[11px] text-slate-500" title={`${e.response}\n${e.messageId ?? ""}`}>
+                              Accepted by mail server · {e.response.split(" ").slice(0, 3).join(" ")}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 text-right">{e.status !== "SENT" && <RetryEmailButton id={e.id} readOnly={readOnly} />}</td>
                       </tr>

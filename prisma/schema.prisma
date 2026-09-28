@@ -182,6 +182,9 @@ model EmailOutbox {
   text      String      @db.Text
   status    EmailStatus @default(PENDING)
   error     String?
+  // Provider receipt, e.g. Gmail's "250 2.0.0 OK" and the Message-ID, as proof of hand-off.
+  messageId String?
+  response  String?
   attempts  Int         @default(0)
   userId    String?
   createdAt DateTime    @default(now())

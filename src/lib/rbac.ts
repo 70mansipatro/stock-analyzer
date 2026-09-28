@@ -20,7 +20,7 @@ const PERMISSIONS: Record<AppRole, Permission[]> = {
 export const ROLE_INFO: Record<AppRole, { label: string; description: string; tone: string }> = {
   ADMIN: { label: "Admin", description: "Full access, including the admin console, roles and platform settings.", tone: "violet" },
   AUDITOR: { label: "Auditor", description: "Read-only admin: sees every user, trade and guardrail log, but can't change anything or trade.", tone: "sky" },
-  USER: { label: "Trader", description: "Standard account: analysis, AI assistant and paper trading.", tone: "emerald" },
+  USER: { label: "Trader", description: "Standard account: research, AI assistant and virtual trading.", tone: "emerald" },
   VIEWER: { label: "Viewer", description: "Browse markets, charts and chat with the AI, but can't trade.", tone: "slate" },
 };
 

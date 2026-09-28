@@ -66,8 +66,25 @@ async function deliver(id: string) {
   let lastError = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await transport.sendMail({ from: process.env.EMAIL_FROM || process.env.SMTP_USER, to: row.to, subject: row.subject, html: row.html, text: row.text });
-      await prisma.emailOutbox.update({ where: { id }, data: { status: "SENT", sentAt: new Date(), attempts: row.attempts + attempt, error: null } });
+      const info = await transport.sendMail({
+        from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+        replyTo: process.env.EMAIL_REPLY_TO || process.env.SMTP_USER,
+        to: row.to,
+        subject: row.subject,
+        html: row.html,
+        text: row.text,
+        headers: {
+          "List-Unsubscribe": `<${appUrl()}/settings#notifications>`,
+          "X-Entity-Ref-ID": row.id, // stops Gmail threading unrelated emails together
+        },
+      });
+      const accepted = (info.accepted ?? []).map(String).includes(row.to);
+      await prisma.emailOutbox.update({
+        where: { id },
+        data: accepted
+          ? { status: "SENT", sentAt: new Date(), attempts: row.attempts + attempt, error: null, messageId: info.messageId ?? null, response: String(info.response ?? "").slice(0, 300) }
+          : { status: "FAILED", attempts: row.attempts + attempt, error: `Rejected by mail server: ${String(info.response ?? "")}`.slice(0, 500), response: String(info.response ?? "").slice(0, 300) },
+      });
       return;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
@@ -341,3 +358,47 @@ export function reportEmail(o: {
 }
 
 export { appUrl };
+
+export function welcomeEmail(o: { name?: string | null; roleLabel: string; roleDescription: string; cashLabel: string; returning: boolean; canTrade: boolean }) {
+  const first = o.name?.split(" ")[0] ?? "there";
+  return {
+    subject: o.returning ? `Welcome back to Stock Analyzer, ${first}` : `Welcome to Stock Analyzer, ${first}`,
+    ...layout({
+      preheader: o.returning ? "Your account is ready again." : `Your account is ready with ${o.cashLabel} of virtual cash.`,
+      eyebrow: o.returning ? "Welcome back" : "Welcome aboard",
+      title: o.returning ? `Good to see you again, ${first}` : `Your account is ready, ${first}`,
+      intro: o.returning
+        ? "Your Stock Analyzer account has been set up again with a fresh start. Everything below is ready for you."
+        : "Thanks for joining Stock Analyzer: research stocks, see AI forecasts and practise trading with virtual money, risk-free.",
+      stats: [
+        { label: "Virtual cash", value: o.canTrade ? o.cashLabel : "—" },
+        { label: "Your role", value: o.roleLabel },
+        { label: "Markets", value: "US + India" },
+      ],
+      table: {
+        columns: [{ label: "Get started" }, { label: "Where", align: "right" }],
+        rows: [
+          { cells: ["See today's market heatmap and top movers", "Markets"] },
+          { cells: ["Open any stock for charts, AI news and a forecast", "Search bar"] },
+          ...(o.canTrade ? [{ cells: ["Place your first practice trade", "Stock page → Trade"] }] : []),
+          { cells: ['Ask the AI: "email me today\'s top gainers"', "Ask AI button"] },
+        ],
+      },
+      note: `Your access: ${o.roleDescription}`,
+      button: { label: "Start exploring", href: appUrl() },
+      footer: "You're receiving this because you signed in to Stock Analyzer for the first time. Virtual trading only, not financial advice.",
+    }),
+  };
+}
+
+export function rejoinAllowedEmail(o: { changedBy: string }) {
+  return {
+    subject: "You can join Stock Analyzer again",
+    ...layout({
+      preheader: "Your access was restored.",
+      title: "You can sign up again",
+      intro: `${o.changedBy} restored your access to Stock Analyzer. Sign in with your Google account to create a fresh account.`,
+      button: { label: "Sign in", href: `${appUrl()}/login` },
+    }),
+  };
+}

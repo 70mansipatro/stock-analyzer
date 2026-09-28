@@ -63,6 +63,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const role: Role = bootstrapAdmin(user.email) ? "ADMIN" : (assignment?.role ?? "USER");
       const cash = settings?.startingCash ?? new Prisma.Decimal(100000);
       await prisma.user.update({ where: { id: user.id }, data: { role, cashBalance: cash, startingCash: cash } });
+
+      // Welcome email (or "welcome back" if this email was removed before and allowed to rejoin).
+      try {
+        const { sendEmail, welcomeEmail } = await import("@/lib/email");
+        const { ROLE_INFO, can } = await import("@/lib/rbac");
+        const returning = (await prisma.auditLog.count({ where: { event: "admin_user_removed", detail: { path: ["email"], equals: user.email } } })) > 0;
+        const mail = welcomeEmail({
+          name: user.name,
+          roleLabel: ROLE_INFO[role].label,
+          roleDescription: ROLE_INFO[role].description,
+          cashLabel: `$${Number(cash).toLocaleString("en-US")}`,
+          returning,
+          canTrade: can(role, "trade"),
+        });
+        await sendEmail({ to: user.email, kind: returning ? "welcome_back" : "welcome", userId: user.id, ...mail });
+      } catch (err) {
+        console.error("welcome email failed", err);
+      }
     },
     async signIn({ user }) {
       if (!user.id) return;

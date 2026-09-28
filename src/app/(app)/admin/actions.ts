@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import type { Role } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit";
-import { accessEmail, accountRemovedEmail, accountResetEmail, invitationEmail, invitationWithdrawnEmail, resendEmail, roleChangedEmail, sendEmail } from "@/lib/email";
+import { accessEmail, accountRemovedEmail, rejoinAllowedEmail, accountResetEmail, invitationEmail, invitationWithdrawnEmail, resendEmail, roleChangedEmail, sendEmail } from "@/lib/email";
 import { AccessError, isBootstrapAdmin, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { ROLE_INFO, ROLES } from "@/lib/rbac";
@@ -208,9 +208,10 @@ export async function removeUser(userId: string, reason?: string): Promise<Actio
 export async function unblockEmail(email: string): Promise<ActionResult> {
   const parsed = emailSchema.safeParse(email);
   if (!parsed.success) return { ok: false, message: "Invalid email." };
-  const res = await guard(async (actorId) => {
+  const res = await guard(async (actorId, _e, actorName) => {
     await prisma.blockedEmail.deleteMany({ where: { email: parsed.data } });
     await audit(actorId, "admin_email_unblocked", { email: parsed.data });
+    await sendEmail({ to: parsed.data, kind: "rejoin_allowed", ...rejoinAllowedEmail({ changedBy: actorName }) });
   });
-  return res ?? { ok: true, message: `${parsed.data} can sign in again.` };
+  return res ?? { ok: true, message: `${parsed.data} can sign in again and has been emailed.` };
 }

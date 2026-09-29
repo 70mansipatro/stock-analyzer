@@ -147,6 +147,9 @@ body {
   color: transparent;
 }
 
+/* Native <select> popups: selects use a translucent fill, so give the option list a solid theme surface */
+select option { background-color: var(--surface-3); color: var(--body-fg); }
+
 /* Thin dark scrollbars */
 * { scrollbar-width: thin; scrollbar-color: var(--chart-grid) transparent; }
 

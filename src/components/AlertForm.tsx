@@ -12,7 +12,7 @@ const input =
 export function AlertForm({ symbol, price, currency, compact = false }: { symbol?: string; price?: number; currency?: string; compact?: boolean }) {
   const [state, action, pending] = useActionState<AlertFormState, FormData>(createAlertAction, null);
   const [target, setTarget] = useState("");
-  const [condition, setCondition] = useState<"" | "ABOVE" | "BELOW">("");
+  const [condition, setCondition] = useState<"ABOVE" | "BELOW">("ABOVE");
 
   const [handled, setHandled] = useState(state);
   if (handled !== state) {
@@ -41,7 +41,6 @@ export function AlertForm({ symbol, price, currency, compact = false }: { symbol
         <label className="block">
           <span className="mb-1 block text-xs text-slate-400">When price goes</span>
           <select name="condition" value={condition} onChange={(e) => setCondition(e.target.value as typeof condition)} className={input}>
-            <option value="">Auto</option>
             <option value="ABOVE">Above ▲</option>
             <option value="BELOW">Below ▼</option>
           </select>

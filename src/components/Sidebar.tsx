@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BellRing, Briefcase, LayoutDashboard, LogOut, Settings, ShieldHalf } from "lucide-react";
+import { BarChart3, BellRing, Bot, Briefcase, LayoutDashboard, LogOut, Settings, ShieldHalf } from "lucide-react";
 import { AssistantMark } from "@/components/AssistantMark";
 import { can } from "@/lib/rbac";
 import Link from "next/link";
@@ -11,6 +11,7 @@ export const NAV = [
   { href: "/markets", label: "Markets", icon: BarChart3 },
   { href: "/portfolio", label: "Portfolio", icon: Briefcase },
   { href: "/assistant", label: "AI Assistant", icon: AssistantMark },
+  { href: "/agent", label: "Auto-Trader", icon: Bot },
 ];
 
 // Desktop only; on mobile the bell in the top bar links to alerts.
@@ -67,6 +68,7 @@ export function Sidebar({ user, signOutAction, cashLabel }: { user: User; signOu
               {active && <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-gradient-to-b from-emerald-400 to-sky-400" />}
               <Icon className={`h-4.5 w-4.5 ${active ? "text-emerald-300" : "text-slate-500 group-hover:text-slate-300"}`} />
               {label}
+              {href === "/agent" && <span className="ml-auto rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">New</span>}
               {href === "/assistant" && <span className="ml-auto rounded-md bg-gradient-to-r from-emerald-500/20 to-sky-500/20 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">AI</span>}
               {href === "/admin" && user.role === "AUDITOR" && <span className="ml-auto rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">Read-only</span>}
             </Link>
@@ -107,14 +109,14 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ink/5 bg-surface-1/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-ink/5 bg-surface-1/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
     >
       {[...NAV, SETTINGS_NAV].map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (
           <Link key={href} href={href} aria-current={active ? "page" : undefined} className={`flex flex-col items-center gap-1 py-2.5 text-[11px] ${active ? "text-emerald-300" : "text-slate-500"}`}>
             <Icon className="h-5 w-5" />
-            {label.replace("AI Assistant", "AI")}
+            {label.replace("AI Assistant", "AI").replace("Auto-Trader", "Agent").replace("Dashboard", "Home")}
           </Link>
         );
       })}

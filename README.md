@@ -66,3 +66,23 @@ View the database with `npm run db:studio` (http://localhost:5555).
 Every block and trade is recorded in the `AuditLog` table.
 
 Not financial advice. Market data may be delayed.
+
+## AI Auto-Trader (/agent)
+
+An agent that watches 24 stocks (12 US + 12 NIFTY by default), scores each one from -100 to +100
+(trend, MACD momentum, RSI, 20-day return), has Gemini review the buy candidates, and trades
+virtual money within your limits (budget, per-stock %, stop-loss, take-profit, trades per day).
+
+- **Modes:** Auto (trades itself) · Suggest (you approve each trade) · Dry run (records only)
+- **Schedule:** every 5 minutes while NSE or NYSE is open; **Demo speed** runs every minute, any time
+- **Safety:** every order goes through the normal trade checks, the admin kill switch and a
+  database run lock; the agent never re-buys a stock within 30 minutes
+- **Backtest:** replays 3, 6 or 12 months of real prices through the same strategy and compares
+  it with buy-and-hold, the S&P 500 and NIFTY 50
+
+**Demo (3 minutes):** open Auto-Trader, pick a risk level, press *Backtest last 6 months*, then
+switch it on with *Demo speed* and press *Run now*. Open a trade to see its score breakdown, turn
+off trading in Settings > Platform settings to show the kill switch, and ask the chat
+"What did my auto-trader do today and why?".
+
+Tests: `npm test` (strategy scoring and every trading limit).

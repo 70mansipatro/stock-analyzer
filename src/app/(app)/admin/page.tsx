@@ -346,7 +346,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                       <td className="py-2.5 font-medium">{t.symbol}</td>
                       <td className="py-2.5 text-right tabular-nums">{t.quantity}</td>
                       <td className="py-2.5 text-right tabular-nums">{money(t.total)}</td>
-                      <td className="py-2.5 text-right text-xs text-slate-500">{t.source === "CHAT" ? "AI chat" : "App"}</td>
+                      <td className="py-2.5 text-right text-xs text-slate-500">{t.source === "CHAT" ? "AI chat" : t.source === "AGENT" ? "Auto-trader" : "App"}</td>
                     </tr>
                   ))}
                 </tbody>

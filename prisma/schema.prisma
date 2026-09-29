@@ -36,6 +36,7 @@ model User {
   accounts  Account[]
   sessions  Session[]
   holdings  Holding[]
+  agent     AgentConfig?
   trades    Trade[]
   auditLogs AuditLog[]
   alerts        PriceAlert[]
@@ -93,6 +94,7 @@ enum TradeSide {
 enum TradeSource {
   UI
   CHAT
+  AGENT
 }
 
 // Current position per user and symbol (paper trading).
@@ -259,4 +261,83 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+enum AgentMode {
+  AUTO     // trades by itself
+  SUGGEST  // proposes trades for the user to approve
+  DRY_RUN  // only records what it would do
+}
+
+enum AgentRisk {
+  CONSERVATIVE
+  BALANCED
+  AGGRESSIVE
+}
+
+// Settings for the AI auto-trader, one per user.
+model AgentConfig {
+  userId          String    @id
+  enabled         Boolean   @default(false)
+  mode            AgentMode @default(AUTO)
+  risk            AgentRisk @default(BALANCED)
+  // USD the agent may keep invested at once.
+  budget          Decimal   @default(5000) @db.Decimal(14, 2)
+  maxPositionPct  Int       @default(15)   // max % of budget in one stock
+  maxTradesPerDay Int       @default(10)
+  stopLossPct     Decimal   @default(8)    @db.Decimal(5, 2)
+  takeProfitPct   Decimal   @default(15)   @db.Decimal(5, 2)
+  universe        String[]
+  useAiReview     Boolean   @default(true)
+  dailyEmail      Boolean   @default(true)
+  // Demo: runs every minute and ignores market hours.
+  demoSpeed       Boolean   @default(false)
+  lastRunAt       DateTime?
+  // Lock: set while a run is in progress (shared by the scheduler and manual runs).
+  runningSince    DateTime?
+  lastSummaryDate String?
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AgentRun {
+  id         String    @id @default(cuid())
+  userId     String
+  trigger    String    // scheduled | manual
+  mode       AgentMode
+  status     String    // completed | skipped | failed
+  scanned    Int       @default(0)
+  summary    String?
+  aiNote     String?   @db.Text
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  decisions AgentDecision[]
+
+  @@index([userId, startedAt])
+}
+
+model AgentDecision {
+  id         String   @id @default(cuid())
+  runId      String
+  userId     String
+  symbol     String
+  action     String   // BUY | SELL | HOLD
+  quantity   Int      @default(0)
+  price      Decimal? @db.Decimal(14, 4) // stock's own currency
+  score      Int      @default(0)        // -100..100
+  confidence Int      @default(0)        // 0..100
+  reasons    Json
+  aiNote     String?
+  // executed | suggested | approved | rejected | dry_run | skipped | failed | hold
+  status     String
+  error      String?
+  tradeId    String?
+  createdAt  DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
 }

@@ -14,5 +14,6 @@ export function inCcy(usd: number | null | undefined, c: DisplayCurrency, digits
 
 export function signedInCcy(usd: number | null | undefined, c: DisplayCurrency) {
   if (usd === null || usd === undefined || !Number.isFinite(usd)) return "—";
-  return `${usd >= 0 ? "+" : "−"}${inCcy(Math.abs(usd), c)}`;
+  const v = Math.abs(usd) < 0.005 ? 0 : usd; // never show "−$0.00"
+  return `${v >= 0 ? "+" : "−"}${inCcy(Math.abs(v), c)}`;
 }

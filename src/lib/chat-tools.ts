@@ -5,6 +5,7 @@ import { analyzeStock } from "@/lib/analysis";
 import { getQuote, getTopStocks, MarketError, searchSymbols, TOP_CATEGORY_LABELS, type TopCategory } from "@/lib/market";
 import { getNewsInsight } from "@/lib/insights";
 import { predictStock } from "@/lib/prediction";
+import { getAgentActivity } from "@/lib/agent/activity";
 import { emailReport, ReportError, REPORT_TYPES } from "@/lib/reports";
 import { can, type AppRole } from "@/lib/rbac";
 import type { PlatformSettings } from "@/lib/settings";
@@ -158,6 +159,13 @@ export function buildTools(userId: string, settings: PlatformSettings, role: App
           if (!actor) throw new AnnouncementError("Please sign in again.");
           return sendAnnouncement(actor, input);
         }),
+    }),
+
+    getAgentActivity: tool({
+      description:
+        "What the user's AI auto-trader is set to and what it did recently: settings, recent runs, trades and suggestions with the reasons behind each decision. Read-only.",
+      inputSchema: z.object({ runs: z.number().int().min(1).max(10).default(3) }),
+      execute: ({ runs }) => safe(() => getAgentActivity(userId, runs)),
     }),
 
     getPortfolio: tool({

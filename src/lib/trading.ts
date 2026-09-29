@@ -105,7 +105,7 @@ export type ExecutedTrade = OrderPreview & { tradeId: string; realizedPnl: numbe
 export async function executeOrder(
   userId: string,
   input: OrderInput,
-  source: "UI" | "CHAT",
+  source: "UI" | "CHAT" | "AGENT",
 ): Promise<ExecutedTrade> {
   const preview = await validateOrder(userId, input);
   const { symbol, side, quantity, price, total } = preview;
@@ -274,7 +274,7 @@ export async function getRecentTrades(userId: string, take = 20) {
 }
 
 /** Order confirmation email (respects the user's "Orders" email preference). Never throws. */
-async function sendOrderEmail(userId: string, p: OrderPreview, realizedPnl: number | null, source: "UI" | "CHAT") {
+async function sendOrderEmail(userId: string, p: OrderPreview, realizedPnl: number | null, source: "UI" | "CHAT" | "AGENT") {
   try {
     if (!(await wantsEmail(userId, "orders"))) return;
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
@@ -290,7 +290,7 @@ async function sendOrderEmail(userId: string, p: OrderPreview, realizedPnl: numb
       totalLabel: money(p.total),
       cashAfterLabel: money(p.cashAfter),
       pnlLabel: realizedPnl === null ? null : `${realizedPnl >= 0 ? "+" : "−"}${money(Math.abs(realizedPnl))}`,
-      via: source === "CHAT" ? "AI assistant" : "Trade form",
+      via: source === "CHAT" ? "AI assistant" : source === "AGENT" ? "AI auto-trader" : "Trade form",
       at: new Date(),
     });
     await sendEmail({ to: user.email, kind: "order_filled", userId, ...mail });

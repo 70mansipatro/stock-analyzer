@@ -39,6 +39,7 @@ const TOOL_LABELS: Record<string, string> = {
   predictStock: "Building forecast",
   getNews: "Reading the latest headlines",
   emailReport: "Preparing your email report",
+  getAgentActivity: "Checking your auto-trader",
   getPortfolio: "Loading your portfolio",
   placeTrade: "Preparing order",
   findVideos: "Finding videos on YouTube",

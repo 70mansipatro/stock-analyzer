@@ -152,7 +152,7 @@ export default async function PortfolioPage() {
                     <td className="py-2 text-right tabular-nums">{m(t.price)}</td>
                     <td className="py-2 text-right tabular-nums">{m(t.total)}</td>
                     <td className="py-2 text-right tabular-nums">{t.realizedPnl === null ? "—" : <Change value={cv(t.realizedPnl)} currency={cur.code} />}</td>
-                    <td className="py-2 text-right text-xs text-slate-500">{t.source === "CHAT" ? "AI chat" : "App"}</td>
+                    <td className="py-2 text-right text-xs text-slate-500">{t.source === "CHAT" ? "AI chat" : t.source === "AGENT" ? "Auto-trader" : "App"}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,9 +1,11 @@
-import { Banknote, Briefcase, History, Layers, LineChart, PieChart, Sparkles, Wallet } from "lucide-react";
+import { Banknote, Briefcase, FlaskConical, History, Layers, LineChart, PieChart, Sparkles, Wallet } from "lucide-react";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { Change } from "@/components/Change";
 import { AllocationDonut, PerformanceChart } from "@/components/PortfolioCharts";
 import { PortfolioReview } from "@/components/PortfolioReview";
+import { ShareCardButton } from "@/components/ShareCard";
+import { WhatIf } from "@/components/WhatIf";
 import { Card, PageHeader, Stat } from "@/components/ui";
 import { inCcy, signedInCcy } from "@/lib/display-currency";
 import { getDisplayCurrency } from "@/lib/display-currency-server";
@@ -25,7 +27,9 @@ export default async function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Portfolio" subtitle="Your virtual trading account. Values use live market prices." />
+      <PageHeader title="Portfolio" subtitle="Your virtual trading account. Values use live market prices.">
+        <ShareCardButton returnPct={p.totalReturnPct} />
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat icon={Wallet} tone="emerald" label="Total value" value={m(p.totalValue)} sub={<Change value={cv(p.totalValue - p.startingCash)} percent={p.totalReturnPct} currency={cur.code} />} />
@@ -58,6 +62,14 @@ export default async function PortfolioPage() {
           </Card>
         </div>
       </div>
+
+      <Card title="What if?" subtitle="Drag to see how market moves would change your portfolio" icon={FlaskConical} tone="violet">
+        <WhatIf
+          cash={p.cash}
+          startingCash={p.startingCash}
+          holdings={p.positions.map((pos) => ({ symbol: pos.symbol, name: pos.name, value: pos.marketValue ?? pos.costBasis, cost: pos.costBasis }))}
+        />
+      </Card>
 
       <Card title="AI portfolio review" subtitle="Risk score, diversification and ideas from AI" icon={Sparkles} tone="sky">
         <PortfolioReview hasHoldings={p.positions.length > 0} />

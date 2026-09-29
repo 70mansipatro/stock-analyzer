@@ -12,6 +12,10 @@ import { inCcy, USD, type DisplayCurrency } from "@/lib/display-currency";
 import { money } from "@/lib/format";
 import { executeOrder, getPortfolio, TradeError, validateOrder } from "@/lib/trading";
 import { audit } from "@/lib/audit";
+import { AlertError, createAlert } from "@/lib/alerts";
+import { searchVideos, VideoError } from "@/lib/youtube";
+import { AnnouncementError, AUDIENCES, previewAnnouncement, sendAnnouncement } from "@/lib/announcements";
+import type { Actor } from "@/lib/authz";
 
 const symbolField = z
   .string()
@@ -25,7 +29,7 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | { error: string }> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof MarketError || err instanceof TradeError || err instanceof ReportError) return { error: err.message };
+    if (err instanceof MarketError || err instanceof TradeError || err instanceof ReportError || err instanceof AlertError || err instanceof VideoError || err instanceof AnnouncementError) return { error: err.message };
     console.error("tool failed", err);
     return { error: "Market data is unavailable right now. Please try again shortly." };
   }
@@ -34,7 +38,7 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | { error: string }> {
 /**
  * Tools are built per request so `userId` comes from the verified session, never from model output.
  */
-export function buildTools(userId: string, settings: PlatformSettings, role: AppRole, ccy: DisplayCurrency = USD) {
+export function buildTools(userId: string, settings: PlatformSettings, role: AppRole, ccy: DisplayCurrency = USD, actor?: Actor) {
   const tools = {
     getTopStocks: tool({
       description: "List today's top US stocks: most active, biggest gainers, or biggest losers.",
@@ -110,6 +114,52 @@ export function buildTools(userId: string, settings: PlatformSettings, role: App
       execute: (input) => safe(() => emailReport(userId, input, ccy)),
     }),
 
+    findVideos: tool({
+      description:
+        "Find YouTube videos that teach a stock-market or investing topic (e.g. how buying and selling shares works, candlestick charts, what is a P/E ratio). " +
+        "They are shown to the user as playable embedded videos. Use when the user asks for videos, tutorials, or to 'learn' / 'watch' something.",
+      inputSchema: z.object({
+        query: z.string().min(3).max(100).describe("A focused YouTube search in English, e.g. 'how to buy and sell stocks for beginners in English'. Only use another language (e.g. Hindi) if the user asks for it."),
+        count: z.number().int().min(1).max(6).default(4),
+      }),
+      execute: ({ query, count }) => safe(async () => ({ query, videos: await searchVideos(query, count) })),
+      // The model only needs titles to write its intro, not thumbnails.
+      toModelOutput: ({ output }) => ({
+        type: "json",
+        value: "error" in output ? output : { query: output.query, videos: output.videos.map((v) => ({ title: v.title, channel: v.channel, duration: v.duration })) },
+      }),
+    }),
+
+    createPriceAlert: tool({
+      description:
+        "Create a price alert for the user: they get an in-app notification (and an email if enabled) when the stock goes above or below a target price. " +
+        "Target is in the stock's own currency. Omit condition to infer it from the current price.",
+      inputSchema: z.object({
+        symbol: symbolField,
+        targetPrice: z.number().positive(),
+        condition: z.enum(["ABOVE", "BELOW"]).optional(),
+        note: z.string().max(140).optional(),
+      }),
+      execute: (input) => safe(() => createAlert(userId, input)),
+    }),
+
+    emailAllUsers: tool({
+      description:
+        "ADMIN ONLY. Email an announcement to every active user of the app (or one role group). Write a clear subject and a friendly plain-text message " +
+        "(paragraphs separated by blank lines, no markdown, no placeholders like [Name]). The admin sees a preview with the recipient count and must confirm before anything is sent.",
+      inputSchema: z.object({
+        subject: z.string().min(3).max(120),
+        message: z.string().min(10).max(4000),
+        audience: z.enum(AUDIENCES).default("all").describe("all = everyone; or only one role: ADMIN, AUDITOR, USER (traders), VIEWER."),
+      }),
+      // Runs only after the admin confirms the preview card.
+      execute: (input) =>
+        safe(async () => {
+          if (!actor) throw new AnnouncementError("Please sign in again.");
+          return sendAnnouncement(actor, input);
+        }),
+    }),
+
     getPortfolio: tool({
       description: "The user's paper-trading portfolio: cash, holdings with live value, and profit/loss.",
       inputSchema: z.object({}),
@@ -127,13 +177,12 @@ export function buildTools(userId: string, settings: PlatformSettings, role: App
       execute: (input) => safe(() => executeOrder(userId, input, "CHAT")),
     }),
   };
-  // Roles without the trade permission (Viewer, Auditor) never get the trade tool, so the model can't even try.
-  if (!can(role, "trade") || !settings.tradingEnabled) {
-    const { placeTrade: _omit, ...readOnly } = tools;
-    void _omit;
-    return readOnly as typeof tools;
-  }
-  return tools;
+  // Tools a role can't use are removed, so the model can't even try:
+  // trading needs the trade permission, announcements need admin.manage.
+  const out: Partial<typeof tools> = { ...tools };
+  if (!can(role, "trade") || !settings.tradingEnabled) delete out.placeTrade;
+  if (!can(role, "admin.manage")) delete out.emailAllUsers;
+  return out as typeof tools;
 }
 
 export type ChatTools = ReturnType<typeof buildTools>;
@@ -145,6 +194,19 @@ export type ChatMessage = UIMessage<never, { guardrail: { reason: string } }, In
  */
 export function buildToolApproval(userId: string, ccy: DisplayCurrency = USD): ToolApprovalConfiguration<ChatTools, unknown> {
   return {
+    emailAllUsers: async (input) => {
+      try {
+        const p = await previewAnnouncement(input);
+        if (!p.count) return { type: "denied", reason: "No one would receive this: no active users with a deliverable email in that group." };
+        const group = p.audience === "all" ? "all active users" : `${p.audience.toLowerCase()} accounts`;
+        return {
+          type: "user-approval",
+          reason: `Send to ${p.count} ${p.count === 1 ? "person" : "people"} (${group})${p.optedOut ? `; ${p.optedOut} turned announcements off and won't get it` : ""}.`,
+        };
+      } catch {
+        return { type: "denied", reason: "The announcement is missing a subject or message." };
+      }
+    },
     placeTrade: async (input) => {
       try {
         const p = await validateOrder(userId, input);

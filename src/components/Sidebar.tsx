@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Briefcase, LayoutDashboard, LogOut, Settings, ShieldHalf } from "lucide-react";
+import { BarChart3, BellRing, Briefcase, LayoutDashboard, LogOut, Settings, ShieldHalf } from "lucide-react";
 import { AssistantMark } from "@/components/AssistantMark";
 import { can } from "@/lib/rbac";
 import Link from "next/link";
@@ -13,6 +13,8 @@ export const NAV = [
   { href: "/assistant", label: "AI Assistant", icon: AssistantMark },
 ];
 
+// Desktop only; on mobile the bell in the top bar links to alerts.
+const ALERTS_NAV = { href: "/alerts", label: "Price alerts", icon: BellRing };
 const ADMIN_NAV = { href: "/admin", label: "Admin", icon: ShieldHalf };
 const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: Settings };
 
@@ -49,9 +51,9 @@ export function Sidebar({ user, signOutAction, cashLabel }: { user: User; signOu
 
       <nav className="mt-8 space-y-1" aria-label="Main">
         <div className="px-3 pb-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">Menu</div>
-        {[...NAV, ...(can(user.role, "admin.view") ? [ADMIN_NAV] : []), SETTINGS_NAV].map(({ href, label, icon: Icon }, i, all) => {
+        {[...NAV, ALERTS_NAV, ...(can(user.role, "admin.view") ? [ADMIN_NAV] : []), SETTINGS_NAV].map(({ href, label, icon: Icon }, i, all) => {
           const active = isActive(pathname, href);
-          const firstAccount = i === NAV.length && all.length > NAV.length;
+          const firstAccount = i === NAV.length + 1 && all.length > NAV.length + 1;
           return (
             <div key={href}>
               {firstAccount && <div className="px-3 pb-2 pt-5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">Account</div>}

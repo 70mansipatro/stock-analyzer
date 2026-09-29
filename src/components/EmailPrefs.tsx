@@ -4,7 +4,7 @@ import { useOptimistic, useTransition } from "react";
 import { setEmailPref } from "@/app/(app)/settings/actions";
 import { toast } from "@/lib/toast";
 
-type Cat = { id: "orders" | "alerts"; label: string; description: string };
+type Cat = { id: "orders" | "alerts" | "announcements"; label: string; description: string };
 
 export function EmailPrefs({ categories, prefs, email, configured }: { categories: Cat[]; prefs: Record<string, boolean>; email: string; configured: boolean }) {
   const [state, setOptimistic] = useOptimistic(prefs, (cur, [id, on]: [string, boolean]) => ({ ...cur, [id]: on }));

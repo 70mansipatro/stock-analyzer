@@ -1,10 +1,12 @@
-import { Activity, Bot, Coins, LayoutDashboard, Mail, ShieldAlert, ShieldCheck, Sparkles, UserCog, Users } from "lucide-react";
+import { Activity, Bot, Coins, LayoutDashboard, Mail, ScrollText, ShieldAlert, ShieldCheck, Sparkles, UserCog, Users } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AssignRoleForm, ReadOnlyBanner, RemoveAssignmentButton, ResendInvitationButton, RetryEmailButton, RoleBadge, UnblockButton, UserActions } from "@/components/admin/AdminControls";
 import { emailConfigured } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 import { StackedBars } from "@/components/admin/AdminCharts";
+import { AuditLogTab } from "@/components/admin/AuditLogTab";
+import { parseFilters } from "@/lib/audit-log";
 import { Change } from "@/components/Change";
 import { Card, PageHeader, Stat } from "@/components/ui";
 import { aiUsageStats, guardrailStats, listAssignments, listUsers, tradingStats } from "@/lib/admin";
@@ -20,6 +22,7 @@ const TABS = [
   { id: "trading", label: "Trading", icon: Coins },
   { id: "ai", label: "AI usage", icon: Bot },
   { id: "emails", label: "Emails", icon: Mail },
+  { id: "audit", label: "Audit log", icon: ScrollText },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -30,6 +33,7 @@ const GUARD_LABEL: Record<string, string> = {
   rate_limited: "Rate limited",
   too_long: "Too long",
   approval_forged: "Forged approval",
+  otp_failed: "Wrong sign-in code",
   output_filtered: "Output rewritten",
   trade_denied: "Trade denied",
 };
@@ -43,11 +47,12 @@ const ago = (iso: string | null) => {
   return `${Math.round(m / 1440)}d ago`;
 };
 
-export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const actor = await currentActor();
   if (!actor || !can(actor.role, "admin.view")) redirect("/");
   const readOnly = !can(actor.role, "admin.manage");
-  const { tab: rawTab } = await searchParams;
+  const sp = await searchParams;
+  const rawTab = sp.tab;
   const tab: Tab = TABS.some((t) => t.id === rawTab) ? (rawTab as Tab) : "overview";
 
   const [users, guard, trading, ai, assignments, cur] = await Promise.all([
@@ -396,6 +401,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           </Card>
         </>
       )}
+      {tab === "audit" && <AuditLogTab filters={parseFilters(sp)} />}
+
       {tab === "emails" && (
         <>
           {!emailConfigured() && (

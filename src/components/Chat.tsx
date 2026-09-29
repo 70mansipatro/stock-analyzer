@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
-import { ArrowUp, ArrowUpRight, History, MessageSquarePlus, Square, Trash2, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, BellRing, History, MessageSquarePlus, Play, Square, Trash2, Volume2, VolumeX, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -16,15 +16,19 @@ import { ForecastChart, PriceChart } from "@/components/charts";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { clearAllChats, deleteChat, getChat, newChatId, saveChat, useChatHistory } from "@/lib/chat-history";
+import { setAutoSpeak, speak, stopSpeaking, ttsSupported, useAutoSpeak, useSpeaking } from "@/lib/speech";
+import { ListeningBar, MicButton, useVoiceInput } from "@/components/VoiceInput";
 
 type Part = ChatMessage["parts"][number];
 
 const SUGGESTIONS = [
   "What are today's top gainers?",
+  "Show me videos on how buying and selling stocks works",
   "Analyze Tesla",
   "Forecast NVDA for the next 60 days",
   "How is my portfolio doing?",
   "Buy 3 shares of AAPL",
+  "Alert me when NVDA drops 5%",
 ];
 
 const TOOL_LABELS: Record<string, string> = {
@@ -37,7 +41,12 @@ const TOOL_LABELS: Record<string, string> = {
   emailReport: "Preparing your email report",
   getPortfolio: "Loading your portfolio",
   placeTrade: "Preparing order",
+  findVideos: "Finding videos on YouTube",
+  createPriceAlert: "Setting your price alert",
+  emailAllUsers: "Preparing announcement",
 };
+
+const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("\n").trim();
 
 export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: string; variant?: "page" | "widget" }) {
   const router = useRouter();
@@ -62,6 +71,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
 
   const openChat = (id: string | null) => {
     stop();
+    stopSpeaking();
     setInput("");
     setConversation(id ? { id, messages: getChat(id)?.messages } : { id: newChatId() });
   };
@@ -101,9 +111,25 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
   const submit = (text: string) => {
     const t = text.trim();
     if (!t || busy) return;
+    stopSpeaking();
     sendMessage({ text: t });
     setInput("");
   };
+
+  // Voice input: whatever was said is sent as soon as the user stops talking.
+  const voice = useVoiceInput((text) => submit(text));
+
+  // Read each new reply aloud when the speaker toggle is on (not replies loaded from history).
+  const autoSpeak = useAutoSpeak();
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const was = prevStatus.current;
+    prevStatus.current = status;
+    if (!autoSpeak || status !== "ready" || (was !== "streaming" && was !== "submitted")) return;
+    const last = messages[messages.length - 1];
+    if (last?.role === "assistant") speak(last.id, textOf(last));
+  }, [status, autoSpeak, messages]);
+  useEffect(() => () => stopSpeaking(), []);
 
   const widget = variant === "widget";
   const suggestions = widget ? SUGGESTIONS.slice(0, 4) : SUGGESTIONS;
@@ -161,6 +187,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
                 {m.parts.map((part, i) => (
                   <AssistantPart key={i} part={part} onApproval={addToolApprovalResponse} />
                 ))}
+                {!(busy && m.id === messages[messages.length - 1]?.id) && textOf(m) && <ListenButton id={m.id} text={textOf(m)} />}
               </div>
             </div>
           ),
@@ -194,6 +221,9 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
         }}
         className={widget ? "border-t border-ink/5 p-3" : "pt-3"}
       >
+        {voice.listening ? (
+          <ListeningBar stream={voice.stream} transcript={voice.transcript} onStop={voice.stop} onCancel={voice.cancel} />
+        ) : (
         <div className="glass flex items-center gap-2 rounded-2xl p-1.5 pl-4 focus-within:border-emerald-400/50">
           <input
             value={input}
@@ -203,6 +233,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
             className="min-w-0 flex-1 bg-transparent py-2 text-sm placeholder:text-slate-500 focus:outline-none"
             aria-label="Message the AI assistant"
           />
+          {!busy && <MicButton onClick={voice.start} supported={voice.supported} disabled={!voice.supported} />}
           {busy ? (
             <button type="button" onClick={() => stop()} aria-label="Stop" className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-600 text-slate-50 hover:bg-slate-600">
               <Square className="h-3.5 w-3.5 fill-current" />
@@ -218,6 +249,7 @@ export function Chat({ initialQuestion, variant = "page" }: { initialQuestion?: 
             </button>
           )}
         </div>
+        )}
         <p className="mt-2 text-center text-[11px] text-slate-500">AI can make mistakes. Virtual money only. Not financial advice.</p>
       </form>
     </div>
@@ -243,10 +275,23 @@ function ChatToolbar({
   const [open, setOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const btn = "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-400 transition hover:bg-ink/5 hover:text-slate-50 disabled:opacity-40 disabled:hover:bg-transparent";
+  const autoSpeak = useAutoSpeak();
 
   return (
     <div className={`relative flex items-center gap-1 ${widget ? "border-b border-ink/5 px-3 py-1.5" : "mb-2"}`}>
       {!widget && <span className="mr-auto text-sm font-semibold">AI Assistant</span>}
+      <button
+        onClick={() => {
+          if (!ttsSupported()) return toast("error", "Voice replies aren't supported in this browser");
+          setAutoSpeak(!autoSpeak);
+          toast("info", autoSpeak ? "Voice replies off" : "Voice replies on", autoSpeak ? undefined : "New answers will be read aloud.");
+        }}
+        aria-pressed={autoSpeak}
+        className={`${btn} ${autoSpeak ? "bg-emerald-500/10 text-emerald-300" : ""} ${widget ? "mr-auto" : ""}`}
+        title={autoSpeak ? "Stop reading replies aloud" : "Read replies aloud"}
+      >
+        {autoSpeak ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />} {widget ? "" : "Voice"}
+      </button>
       <button onClick={onNew} disabled={!hasMessages} className={btn} title="Start a new conversation">
         <MessageSquarePlus className="h-3.5 w-3.5" /> New chat
       </button>
@@ -343,6 +388,7 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
   const p = part as Extract<Part, { type: `tool-${string}` }>;
 
   if (toolName === "placeTrade") return <TradePart part={p as Extract<Part, { type: "tool-placeTrade" }>} onApproval={onApproval} />;
+  if (toolName === "emailAllUsers") return <AnnouncementPart part={p as Extract<Part, { type: "tool-emailAllUsers" }>} onApproval={onApproval} />;
 
   if (p.state === "input-streaming" || p.state === "input-available") {
     return <ToolPending label={TOOL_LABELS[toolName] ?? toolName} />;
@@ -456,6 +502,33 @@ function AssistantPart({ part, onApproval }: { part: Part; onApproval: ApprovalF
         </div>
       );
     }
+    case "tool-findVideos": {
+      const v = part.output as Exclude<typeof part.output, { error: string }> | undefined;
+      if (!v) return null;
+      return <VideoGallery videos={v.videos} query={v.query} />;
+    }
+    case "tool-createPriceAlert": {
+      const a = part.output as Exclude<typeof part.output, { error: string }> | undefined;
+      if (!a) return null;
+      const up = a.condition === "ABOVE";
+      return (
+        <div className="flex max-w-md items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300">
+            <BellRing className="h-4.5 w-4.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-amber-300">Alert set</span>
+            <span className="block text-slate-200">
+              {a.symbol} {up ? "above" : "below"} <b className="tabular-nums">{money(a.targetPrice, a.currency)}</b>
+            </span>
+            <span className="block text-xs text-slate-500">
+              Now {money(a.currentPrice, a.currency)} · {Math.abs(a.distancePct).toFixed(2)}% away
+            </span>
+          </span>
+          <Link href="/alerts" className="shrink-0 text-xs text-emerald-400 hover:underline">Manage →</Link>
+        </div>
+      );
+    }
     case "tool-getPortfolio": {
       const pf = part.output as Exclude<typeof part.output, { error: string }> | undefined;
       if (!pf) return null;
@@ -548,6 +621,71 @@ function TradePart({ part, onApproval }: { part: Extract<Part, { type: "tool-pla
   }
 }
 
+/** Admin broadcast: preview with recipient count, sent only after "Send". */
+function AnnouncementPart({ part, onApproval }: { part: Extract<Part, { type: "tool-emailAllUsers" }>; onApproval: ApprovalFn }) {
+  const input = part.input;
+  const preview = input && (
+    <div className="mt-2 rounded-lg border border-ink/10 bg-ink/[0.03] p-3">
+      <div className="text-xs text-slate-500">Subject</div>
+      <div className="font-medium text-slate-100">{input.subject}</div>
+      <div className="mt-2 text-xs text-slate-500">Message</div>
+      <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-slate-300">{input.message}</div>
+    </div>
+  );
+  switch (part.state) {
+    case "input-streaming":
+    case "input-available":
+      return <ToolPending label="Preparing announcement" />;
+    case "approval-requested":
+      if (part.approval.isAutomatic) return <ToolPending label="Checking recipients" />;
+      return (
+        <div className="max-w-lg rounded-xl border border-violet-500/40 bg-violet-500/5 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-violet-300">Confirm announcement email</div>
+          {part.approval.requestReason && <p className="mt-1 text-sm text-slate-200">{part.approval.requestReason}</p>}
+          {preview}
+          <p className="mt-2 text-xs text-slate-500">Each person gets their own copy. This can&apos;t be undone once sent.</p>
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => onApproval({ id: part.approval.id, approved: true })} className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500">
+              Send
+            </button>
+            <button
+              onClick={() => onApproval({ id: part.approval.id, approved: false, reason: "Admin cancelled the announcement." })}
+              className="flex-1 rounded-lg border border-slate-600 py-2 text-sm hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    case "approval-responded":
+      return <ToolPending label={part.approval.approved ? "Sending emails" : "Cancelling"} />;
+    case "output-denied":
+      return (
+        <div className="max-w-lg rounded-xl border border-slate-700 bg-slate-900/60 p-3 text-sm">
+          <span className="text-slate-400">✕ Announcement not sent.</span>
+          {part.approval.reason && <span className="block text-amber-300">{part.approval.reason}</span>}
+        </div>
+      );
+    case "output-error":
+      return <ToolError text={part.errorText} />;
+    case "output-available": {
+      const o = part.output;
+      if ("error" in o) return <ToolError text={`Announcement not sent: ${o.error}`} />;
+      return (
+        <div className="flex max-w-lg items-center gap-3 rounded-xl border border-violet-500/40 bg-violet-500/5 p-3 text-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-lg">✉</span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-violet-300">Sent to {o.sent} {o.sent === 1 ? "person" : "people"}</span>
+            <span className="block truncate text-slate-300">{o.subject}</span>
+            {o.optedOut > 0 && <span className="block text-xs text-slate-500">{o.optedOut} opted out of announcements</span>}
+          </span>
+          <Link href="/admin?tab=emails" className="shrink-0 text-xs text-emerald-400 hover:underline">Delivery →</Link>
+        </div>
+      );
+    }
+  }
+}
+
 function ToolCard({ title, link, children }: { title: string; link?: string; children: React.ReactNode }) {
   return (
     <div className="glass rounded-xl p-4">
@@ -571,4 +709,93 @@ function ToolPending({ label }: { label: string }) {
 
 function ToolError({ text }: { text: string }) {
   return <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">⚠ {text}</div>;
+}
+
+type VideoItem = { id: string; title: string; channel: string; duration: string | null; views: string | null; published: string | null; thumbnail: string };
+
+/** YouTube results as a player plus a strip of thumbnails to switch videos. Privacy-enhanced embeds (no cookies until played). */
+function VideoGallery({ videos, query }: { videos: VideoItem[]; query: string }) {
+  const [active, setActive] = useState(0);
+  const v = videos[active];
+  if (!v) return null;
+  return (
+    <div className="glass overflow-hidden rounded-xl">
+      <div className="relative aspect-video w-full bg-black">
+        <iframe
+          key={v.id}
+          src={`https://www.youtube-nocookie.com/embed/${v.id}?rel=0&modestbranding=1${active > 0 ? "&autoplay=1" : ""}`}
+          title={v.title}
+          className="absolute inset-0 h-full w-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
+          loading="lazy"
+        />
+      </div>
+      <div className="p-3">
+        <div className="text-sm font-medium text-slate-100">{v.title}</div>
+        <div className="mt-0.5 text-xs text-slate-500">
+          {[v.channel, v.duration, v.views, v.published].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+      {videos.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto border-t border-ink/5 p-2">
+          {videos.map((x, i) => (
+            <button
+              key={x.id}
+              onClick={() => setActive(i)}
+              aria-label={`Play ${x.title}`}
+              aria-current={i === active}
+              className={`group relative w-36 shrink-0 overflow-hidden rounded-lg text-left ring-2 transition ${i === active ? "ring-emerald-400" : "ring-transparent hover:ring-ink/20"}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={x.thumbnail} alt="" loading="lazy" className="aspect-video w-full object-cover" />
+              {i !== active && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
+                  <Play className="h-6 w-6 fill-white text-white" />
+                </span>
+              )}
+              {x.duration && <span className="absolute bottom-7 right-1 rounded bg-black/75 px-1 text-[10px] text-white">{x.duration}</span>}
+              <span className="block truncate bg-surface-2 px-1.5 py-1 text-[11px] text-slate-300">{x.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <a
+        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block border-t border-ink/5 px-3 py-2 text-xs text-slate-500 hover:text-emerald-300"
+      >
+        More results on YouTube ↗
+      </a>
+    </div>
+  );
+}
+
+/** Read one reply aloud (or stop it). */
+function ListenButton({ id, text }: { id: string; text: string }) {
+  const speaking = useSpeaking() === id;
+  return (
+    <button
+      onClick={() => (speaking ? stopSpeaking() : speak(id, text))}
+      aria-label={speaking ? "Stop reading" : "Read aloud"}
+      className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition ${speaking ? "bg-emerald-500/10 text-emerald-300" : "text-slate-500 hover:bg-ink/5 hover:text-slate-200"}`}
+    >
+      {speaking ? (
+        <>
+          <span className="flex h-3 items-end gap-[2px]" aria-hidden>
+            {[0, 150, 300, 450].map((d) => (
+              <span key={d} className="w-[2px] animate-[eq_0.9s_ease-in-out_infinite] rounded-full bg-emerald-300" style={{ animationDelay: `${d}ms` }} />
+            ))}
+          </span>
+          Stop
+        </>
+      ) : (
+        <>
+          <Volume2 className="h-3.5 w-3.5" /> Listen
+        </>
+      )}
+    </button>
+  );
 }

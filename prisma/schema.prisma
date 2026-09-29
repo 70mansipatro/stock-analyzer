@@ -38,6 +38,8 @@ model User {
   holdings  Holding[]
   trades    Trade[]
   auditLogs AuditLog[]
+  alerts        PriceAlert[]
+  notifications Notification[]
 }
 
 // OAuth accounts linked to a user (e.g. their Google account).
@@ -200,4 +202,61 @@ model BlockedEmail {
   reason      String?
   blockedById String?
   createdAt   DateTime @default(now())
+}
+
+// One-time sign-in codes sent by email. Only a hash of the code is stored.
+model EmailOtp {
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  ip         String?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
+enum AlertCondition {
+  ABOVE
+  BELOW
+}
+
+// "Tell me when AAPL goes above $250." Checked every minute; fires once, then turns off.
+model PriceAlert {
+  id             String         @id @default(cuid())
+  userId         String
+  symbol         String
+  condition      AlertCondition
+  // In the stock's own currency.
+  targetPrice    Decimal        @db.Decimal(14, 4)
+  currency       String         @default("USD")
+  note           String?
+  active         Boolean        @default(true)
+  triggeredAt    DateTime?
+  triggeredPrice Decimal?       @db.Decimal(14, 4)
+  lastCheckedAt  DateTime?
+  createdAt      DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([active, symbol])
+  @@index([userId, createdAt])
+}
+
+// In-app notifications shown under the bell in the top bar.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String    // alert_triggered, ...
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

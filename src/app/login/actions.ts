@@ -1,66 +1,60 @@
 "use server";
 
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { audit } from "@/lib/audit";
-import { LOCAL_ADMIN_EMAIL, localLoginEnabled } from "@/lib/local-admin";
-import { prisma } from "@/lib/prisma";
+import { OtpError, requestOtp, verifyOtp } from "@/lib/otp";
+import { startSession } from "@/lib/session";
 
-export type LoginState = { error: string } | null;
+export type OtpState =
+  | { step: "email"; error?: string; email?: string }
+  | { step: "code"; email: string; isNew: boolean; error?: string; sentAt: number };
 
-const SESSION_DAYS = 30;
-const attempts = new Map<string, number[]>();
-
-function same(a: string, b: string) {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
+async function clientIp() {
+  return (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 }
 
-/**
- * Username/password sign-in for the local admin defined in .env.local.
- * Creates a normal database session (same cookie Auth.js uses), so roles, suspension and sign-out work unchanged.
- */
-export async function localLogin(_: LoginState, form: FormData): Promise<LoginState> {
-  if (!localLoginEnabled()) return { error: "Local sign-in is disabled." };
-
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now();
-  const recent = (attempts.get(ip) ?? []).filter((t) => now - t < 5 * 60_000);
-  if (recent.length >= 5) return { error: "Too many attempts. Wait 5 minutes and try again." };
-
-  const username = String(form.get("username") ?? "").trim();
-  const password = String(form.get("password") ?? "");
-  const ok = same(username.toLowerCase(), process.env.LOCAL_ADMIN_USERNAME!.trim().toLowerCase()) && same(password, process.env.LOCAL_ADMIN_PASSWORD!);
-  if (!ok) {
-    attempts.set(ip, [...recent, now]);
-    await audit(null, "local_login_failed", { username: username.slice(0, 40), ip });
-    return { error: "Wrong username or password." };
+/** Step 1 (and "resend"): email a 6-digit code. */
+async function sendCode(_: OtpState, form: FormData): Promise<OtpState> {
+  const email = String(form.get("email") ?? "");
+  try {
+    const r = await requestOtp(email, await clientIp());
+    return { step: "code", email: r.email, isNew: r.isNew, sentAt: Date.now() };
+  } catch (err) {
+    const error = err instanceof OtpError ? err.message : "Couldn't send the code. Please try again.";
+    if (!(err instanceof OtpError)) console.error("otp request failed", err);
+    // A resend that fails keeps the user on the code screen.
+    if (form.get("resend")) return { step: "code", email, isNew: form.get("isNew") === "1", error, sentAt: Number(form.get("sentAt")) || Date.now() };
+    return { step: "email", email, error };
   }
-  attempts.delete(ip);
+}
 
-  const user = await prisma.user.upsert({
-    where: { email: LOCAL_ADMIN_EMAIL },
-    create: { email: LOCAL_ADMIN_EMAIL, name: "Local Admin", role: "ADMIN", lastLoginAt: new Date() },
-    update: { role: "ADMIN", lastLoginAt: new Date() },
-  });
-  if (user.suspended) return { error: "This account is suspended." };
-
-  const sessionToken = randomBytes(32).toString("hex");
-  const expires = new Date(now + SESSION_DAYS * 86_400_000);
-  await prisma.session.create({ data: { sessionToken, userId: user.id, expires } });
-
-  const secure = (process.env.AUTH_URL ?? "").startsWith("https://");
-  (await cookies()).set(secure ? "__Secure-authjs.session-token" : "authjs.session-token", sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    secure,
-    expires,
-  });
-  await audit(user.id, "local_login", { ip });
-
+/** Step 2: check the code (plus name for new accounts) and sign in. */
+async function verifyCode(prev: OtpState, form: FormData): Promise<OtpState> {
+  if (prev.step !== "code") return prev;
+  let userId: string;
+  try {
+    const user = await verifyOtp({ email: prev.email, code: form.get("code"), name: form.get("name") }, await clientIp());
+    userId = user.id;
+  } catch (err) {
+    if (!(err instanceof OtpError)) console.error("otp verify failed", err);
+    return { ...prev, error: err instanceof OtpError ? err.message : "Sign-in failed. Please try again." };
+  }
+  await startSession(userId);
   const next = String(form.get("callbackUrl") ?? "/");
   redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+}
+
+/** One action for the whole flow; the submit button's "intent" picks the step. */
+export async function otpAction(prev: OtpState, form: FormData): Promise<OtpState> {
+  const intent = form.get("intent");
+  if (intent === "change") return { step: "email", email: prev.step === "code" ? prev.email : undefined };
+  if (intent === "resend" && prev.step === "code") {
+    form.set("email", prev.email);
+    form.set("resend", "1");
+    form.set("isNew", prev.isNew ? "1" : "0");
+    form.set("sentAt", String(prev.sentAt));
+    return sendCode(prev, form);
+  }
+  if (intent === "verify") return verifyCode(prev, form);
+  return sendCode(prev, form);
 }

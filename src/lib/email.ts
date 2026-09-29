@@ -8,10 +8,11 @@ import { prisma } from "@/lib/prisma";
  * works on machines without email setup and admins can still see what would have been sent.
  */
 
-export type EmailCategory = "orders" | "alerts";
+export type EmailCategory = "orders" | "alerts" | "announcements";
 export const EMAIL_CATEGORIES: { id: EmailCategory; label: string; description: string }[] = [
   { id: "orders", label: "Orders", description: "Confirmation when a trade is filled, cancelled or expires." },
   { id: "alerts", label: "Price alerts", description: "When one of your price or condition alerts fires." },
+  { id: "announcements", label: "Announcements", description: "News and updates about Stock Analyzer from the admins." },
 ];
 // Security notices (invitations, role and access changes, removal) are always sent and have no switch.
 
@@ -105,11 +106,18 @@ async function deliver(id: string) {
   await prisma.emailOutbox.update({ where: { id }, data: { status: "FAILED", attempts: row.attempts + 3, error: lastError.slice(0, 500) } });
 }
 
+const SENSITIVE_KINDS = new Set(["sign_in_code"]);
+const REDACTED = "[Removed after sending: contained a one-time sign-in code]";
+
 /** Queues an email and sends it in the background. Never throws: email must not break the action that triggered it. */
 export async function sendEmail(msg: { to: string; kind: string; subject: string; html: string; text: string; userId?: string | null }) {
   try {
     const row = await prisma.emailOutbox.create({ data: { ...msg, to: msg.to.toLowerCase(), userId: msg.userId ?? null } });
-    void deliver(row.id).catch((err) => console.error("email deliver crashed", err));
+    void deliver(row.id)
+      .catch((err) => console.error("email deliver crashed", err))
+      // One-time codes are removed from the outbox once the send attempt is over, so they can't be read back later.
+      .then(() => (SENSITIVE_KINDS.has(msg.kind) ? prisma.emailOutbox.update({ where: { id: row.id }, data: { html: REDACTED, text: REDACTED } }) : null))
+      .catch((err) => console.error("email redact failed", err));
     void retryStuck();
     return row.id;
   } catch (err) {
@@ -408,6 +416,60 @@ export function rejoinAllowedEmail(o: { changedBy: string }) {
       title: "You can sign up again",
       intro: `${o.changedBy} restored your access to Stock Analyzer. Sign in with your Google account to create a fresh account.`,
       button: { label: "Sign in", href: `${appUrl()}/login` },
+    }),
+  };
+}
+
+export function otpEmail(o: { code: string; minutes: number; newAccount: boolean }) {
+  return {
+    // The code is left out of the subject so it doesn't show on lock screens.
+    subject: o.newAccount ? "Your Stock Analyzer sign-up code" : "Your Stock Analyzer sign-in code",
+    ...layout({
+      preheader: `Your code expires in ${o.minutes} minutes.`,
+      eyebrow: o.newAccount ? "Create your account" : "Sign in",
+      title: "Your one-time code",
+      intro: `Enter this code on the sign-in page. It expires in ${o.minutes} minutes and works once.`,
+      stats: [{ label: "Code", value: o.code.split("").join(" ") }],
+      note: "Never share this code. Stock Analyzer staff will never ask you for it.",
+      footer: "If you didn't try to sign in, you can ignore this email; nobody can get in without the code.",
+    }),
+  };
+}
+
+export function priceAlertEmail(o: { name?: string | null; symbol: string; condition: "ABOVE" | "BELOW"; target: string; price: string; note?: string | null; link: string }) {
+  const verb = o.condition === "ABOVE" ? "rose above" : "fell below";
+  return {
+    subject: `🔔 ${o.symbol} ${verb} ${o.target}`,
+    ...layout({
+      preheader: `${o.symbol} is now ${o.price}.`,
+      eyebrow: "Price alert",
+      title: `${o.symbol} ${verb} ${o.target}`,
+      intro: `Hi ${o.name?.split(" ")[0] ?? "there"}, one of your price alerts just fired.`,
+      stats: [
+        { label: "Price now", value: o.price, tone: o.condition === "ABOVE" ? "up" : "down" },
+        { label: "Your target", value: o.target },
+      ],
+      note: o.note ? `Your note: ${o.note}` : undefined,
+      button: { label: `Open ${o.symbol}`, href: o.link },
+      footer: "Alerts fire once and then turn off. Market data may be delayed. Virtual trading only, not financial advice.",
+    }),
+  };
+}
+
+export function announcementEmail(o: { subject: string; message: string; from: string }) {
+  // Plain paragraphs only: the message is admin-written text, escaped by layout().
+  const paragraphs = o.message.split(/\n{2,}/).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+  return {
+    subject: o.subject,
+    ...layout({
+      preheader: paragraphs[0]?.slice(0, 120) ?? o.subject,
+      eyebrow: "Announcement",
+      title: o.subject,
+      intro: paragraphs[0] ?? "",
+      highlights: paragraphs.length > 2 ? paragraphs.slice(1) : undefined,
+      note: paragraphs.length === 2 ? paragraphs[1] : undefined,
+      button: { label: "Open Stock Analyzer", href: appUrl() },
+      footer: `Sent by ${o.from}, a Stock Analyzer admin. You can turn off announcement emails in Settings.`,
     }),
   };
 }

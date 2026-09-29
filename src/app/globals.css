@@ -29,6 +29,7 @@
   --glow-3: rgba(139, 92, 246, 0.10);
   --grid-line: rgba(148, 163, 184, 0.045);
   --chart-grid: #1e293b;
+  --slider-track: #1e293b;
   --chart-axis: #64748b;
   --chart-text: #94a3b8;
   --chart-gap: #0b1020;
@@ -55,6 +56,7 @@
   --glow-3: rgba(139, 92, 246, 0.12);
   --grid-line: rgba(15, 23, 42, 0.05);
   --chart-grid: #e2e8f0;
+  --slider-track: #e2e8f0;
   --chart-axis: #64748b;
   --chart-text: #475569;
   --chart-gap: #ffffff;
@@ -191,3 +193,14 @@ body {
   animation: spin-border 4s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) { .mark-bars rect, .launcher-ring { animation: none; } }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(14deg); } 40% { transform: rotate(-12deg); } 60% { transform: rotate(8deg); } 80% { transform: rotate(-4deg); } }
+@keyframes eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+
+/* What-if sliders: the track colour is set inline (centre → thumb); these style the thumb. */
+.whatif-range { -webkit-appearance: none; appearance: none; height: 8px; border-radius: 999px; outline: none; cursor: pointer; }
+.whatif-range-sm { height: 5px; }
+.whatif-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 999px; background: #fff; border: 3px solid #0ea5e9; box-shadow: 0 2px 8px rgb(0 0 0 / 0.35); transition: transform 0.1s; }
+.whatif-range-sm::-webkit-slider-thumb { width: 14px; height: 14px; border-width: 2px; }
+.whatif-range::-webkit-slider-thumb:hover, .whatif-range:focus-visible::-webkit-slider-thumb { transform: scale(1.15); }
+.whatif-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 999px; background: #fff; border: 3px solid #0ea5e9; }
+.whatif-range:focus-visible { box-shadow: 0 0 0 3px rgb(14 165 233 / 0.35); }

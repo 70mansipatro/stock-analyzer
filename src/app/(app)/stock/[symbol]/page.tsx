@@ -1,4 +1,4 @@
-import { ArrowLeftRight, CandlestickChart, Gauge, ListChecks, Newspaper, Telescope } from "lucide-react";
+import { ArrowLeftRight, BellPlus, CandlestickChart, Gauge, ListChecks, Newspaper, Telescope } from "lucide-react";
 import Link from "next/link";
 import { AssistantMark } from "@/components/AssistantMark";
 import { redirect } from "next/navigation";
@@ -9,6 +9,7 @@ import { CandleChart } from "@/components/CandleChart";
 import { ForecastChart } from "@/components/charts";
 import { NewsPanel, NewsSkeleton } from "@/components/NewsPanel";
 import { TradeForm } from "@/components/TradeForm";
+import { AlertForm } from "@/components/AlertForm";
 import { Card, ErrorNote } from "@/components/ui";
 import { analyzeStock, type Analysis } from "@/lib/analysis";
 import { compact, money, num, pct } from "@/lib/format";
@@ -141,6 +142,10 @@ export default async function StockPage({
               maxOrderValue={settings.maxOrderValue}
             />
             )}
+          </Card>
+
+          <Card title="Price alert" subtitle={`Notify me when ${q.symbol} crosses a price`} icon={BellPlus} tone="amber">
+            <AlertForm symbol={q.symbol} price={q.price} currency={q.currency} compact />
           </Card>
 
           <Card title="Technical analysis" icon={Gauge} tone="sky">

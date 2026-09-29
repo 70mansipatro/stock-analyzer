@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { ChatWidget } from "@/components/ChatWidget";
 import { MarketTicker } from "@/components/MarketTicker";
+import { NotificationBell } from "@/components/NotificationBell";
 import { SearchBox } from "@/components/SearchBox";
 import { Logo, MobileNav, Sidebar } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -53,6 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ))}
             </div>
             <CurrencyToggle />
+            <NotificationBell />
             <ThemeToggle />
             {user.image && (
               // eslint-disable-next-line @next/next/no-img-element

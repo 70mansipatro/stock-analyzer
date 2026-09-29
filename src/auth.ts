@@ -1,7 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { Prisma } from "@/generated/prisma/client";
 import type { Role } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
@@ -15,7 +14,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   // Sessions are stored in the Session table, so they can be seen and revoked in Prisma Studio.
   session: { strategy: "database" },
-  providers: [Google],
+  // Google verifies email ownership, so a Google sign-in may join an account first created with an email code.
+  providers: [Google({ allowDangerousEmailAccountLinking: true })],
   pages: {
     signIn: "/login",
     error: "/login",
@@ -53,34 +53,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   events: {
-    // New account: apply a role an admin pre-assigned to this email, and the current starting cash.
+    // New account: pre-assigned role, starting cash and welcome email (shared with email-code sign-in).
     async createUser({ user }) {
       if (!user.id || !user.email) return;
-      const [assignment, settings] = await Promise.all([
-        prisma.roleAssignment.findUnique({ where: { email: user.email.toLowerCase() } }),
-        prisma.appSettings.findUnique({ where: { id: "global" } }),
-      ]);
-      const role: Role = bootstrapAdmin(user.email) ? "ADMIN" : (assignment?.role ?? "USER");
-      const cash = settings?.startingCash ?? new Prisma.Decimal(100000);
-      await prisma.user.update({ where: { id: user.id }, data: { role, cashBalance: cash, startingCash: cash } });
-
-      // Welcome email (or "welcome back" if this email was removed before and allowed to rejoin).
-      try {
-        const { sendEmail, welcomeEmail } = await import("@/lib/email");
-        const { ROLE_INFO, can } = await import("@/lib/rbac");
-        const returning = (await prisma.auditLog.count({ where: { event: "admin_user_removed", detail: { path: ["email"], equals: user.email } } })) > 0;
-        const mail = welcomeEmail({
-          name: user.name,
-          roleLabel: ROLE_INFO[role].label,
-          roleDescription: ROLE_INFO[role].description,
-          cashLabel: `$${Number(cash).toLocaleString("en-US")}`,
-          returning,
-          canTrade: can(role, "trade"),
-        });
-        await sendEmail({ to: user.email, kind: returning ? "welcome_back" : "welcome", userId: user.id, ...mail });
-      } catch (err) {
-        console.error("welcome email failed", err);
-      }
+      const { onboardUser } = await import("@/lib/onboarding");
+      await onboardUser({ id: user.id, email: user.email, name: user.name });
     },
     async signIn({ user }) {
       if (!user.id) return;

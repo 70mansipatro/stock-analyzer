@@ -69,20 +69,38 @@ Not financial advice. Market data may be delayed.
 
 ## AI Auto-Trader (/agent)
 
-An agent that watches 24 stocks (12 US + 12 NIFTY by default), scores each one from -100 to +100
-(trend, MACD momentum, RSI, 20-day return), has Gemini review the buy candidates, and trades
-virtual money within your limits (budget, per-stock %, stop-loss, take-profit, trades per day).
+**Paper trading only — no real money is used.** The Auto-Trader uses configurable profit targets and
+risk protection, but market returns are not guaranteed.
 
-- **Modes:** Auto (trades itself) · Suggest (you approve each trade) · Dry run (records only)
-- **Schedule:** every 5 minutes while NSE or NYSE is open; **Demo speed** runs every minute, any time
-- **Safety:** every order goes through the normal trade checks, the admin kill switch and a
-  database run lock; the agent never re-buys a stock within 30 minutes
-- **Backtest:** replays 3, 6 or 12 months of real prices through the same strategy and compares
-  it with buy-and-hold, the S&P 500 and NIFTY 50
+The agent watches the stocks you select (US tickers, or Indian ones on NSE `.NS` / BSE `.BO`), scores
+each one from -100 to +100 (200/50/20-day averages, MACD momentum, RSI, 20-day return), applies your
+exit rules and limits, has Gemini review the buy candidates, and trades virtual money.
 
-**Demo (3 minutes):** open Auto-Trader, pick a risk level, press *Backtest last 6 months*, then
-switch it on with *Demo speed* and press *Run now*. Open a trade to see its score breakdown, turn
-off trading in Settings > Platform settings to show the kill switch, and ask the chat
-"What did my auto-trader do today and why?".
+- **Modes:** Full auto (buys and sells by itself, no approval) · Suggest (you approve each trade) · Dry run (records only)
+- **Exit rules:** profit target (default 15%, 0 = off), maximum loss (default 15%), optional trailing stop
+  (e.g. bought at $100, peaked at $130, 10% trail → sells near $117), and a weak strategy score after a
+  5-day minimum hold. Protective exits are never held back by the daily trade cap.
+- **AI review:** can only veto a buy. It never adds or resizes a trade and never blocks a sell; if Gemini
+  is unavailable the rule engine decides and the run is marked "AI unavailable".
+- **Schedule:** every 5 minutes while each stock's own exchange is open (NYSE/Nasdaq in New York time,
+  NSE/BSE in India time, weekends and exchange holidays excluded). *Run now* scans any time but still
+  holds orders for a closed market unless *Market hours only* is off; *Demo speed* runs every minute.
+- **Safety:** every order goes through `executeOrder` (role, suspension, kill switch, per-order limits,
+  cash, holdings); a database run lock stops overlapping runs; an idempotency key allows one automatic
+  buy per stock per day and one sell per position; the trade, its decision and the position are written
+  in one transaction; switching the agent off stops the run before its next order.
+- **History:** every scan and decision (BUY / SELL / HOLD, score, reasons, AI verdict, risk settings,
+  entry/exit price, realized P/L) is kept in `AgentDecision`, with an `AuditLog` entry for each order.
+- **Notifications:** in-app, an email per automatic trade and a daily summary (after the hour you pick),
+  plus an optional webhook (`NOTIFY_WEBHOOK_URL`), all through `src/lib/notify.ts`. A failed notification
+  never undoes a trade.
+- **Backtest:** a historical simulation of your saved settings on your selected stocks (same strategy,
+  exit rules and limits), compared with buy-and-hold, the S&P 500 and NIFTY 50. Past results do not
+  guarantee future returns.
 
-Tests: `npm test` (strategy scoring and every trading limit).
+**Try FULL AUTO locally:** open Auto-Trader, add 3 stocks (e.g. NVDA, MSFT, RELIANCE.NS), pick *Full auto*,
+set profit target and maximum loss to 15%, save, press *Start Auto-Trader*, then *Run now* (or turn on
+*Demo speed* to run every minute outside market hours). Trades appear under *Recent automatic trades*,
+in Portfolio, under the bell and in the admin Emails tab.
+
+Tests: `npm test` (strategy scoring, exit rules, market hours, every trading limit, and full auto-trader runs against an in-memory database).

@@ -1,11 +1,15 @@
 import "server-only";
 import { getHistory, getUsdRate, type Bar } from "@/lib/market";
+import { TRIGGER_LABEL } from "./rules";
 import { planActions, scoreStock, type PlanConfig, type Position } from "./strategy";
 
 /**
- * Replays real daily prices through the same strategy the live agent uses: every trading day it scores
- * the universe with only the data known that day, plans orders under the same limits, and fills them at
- * that day's close. Non-USD stocks use today's exchange rate for the whole period (a simplification).
+ * Historical simulation. Replays real daily prices through the same strategy and exit rules the live
+ * agent uses (planActions: score, profit target, maximum loss, trailing stop, position and daily limits):
+ * every trading day it scores the selected stocks with only the data known that day, plans orders under
+ * the same limits, and fills them at that day's close. Daily closes only, so intraday highs and lows
+ * (and the trailing stop's intraday peak) are not seen. Non-USD stocks use today's exchange rate for the
+ * whole period (a simplification). Past results do not guarantee future returns.
  */
 
 export type BacktestTrade = { date: string; symbol: string; side: "BUY" | "SELL"; quantity: number; priceUsd: number; reason: string; pnlUsd: number | null };
@@ -26,6 +30,8 @@ export type BacktestResult = {
   curve: { date: string; agent: number; buyHold: number; sp500: number | null; nifty: number | null }[];
   tradeLog: BacktestTrade[];
   symbolsUsed: number;
+  symbols: string[];
+  settings: { profitTargetPct: number; maxLossPct: number; trailingStopPct: number | null; risk: string; maxPositionPct: number; maxTradesPerDay: number; budgetUsd: number };
 };
 
 const WARMUP = 210; // bars needed before the first decision (200-day average)
@@ -54,7 +60,7 @@ export async function runBacktest(universe: string[], cfg: PlanConfig, days = 12
   const lastIdx = new Map<string, number>();
 
   let cash = cfg.budgetUsd;
-  const pos = new Map<string, { quantity: number; avgCostUsd: number; boughtAt: number }>();
+  const pos = new Map<string, { quantity: number; avgCostUsd: number; boughtAt: number; highWaterUsd: number }>();
   const tradeLog: BacktestTrade[] = [];
   const curve: BacktestResult["curve"] = [];
   const priceOn = (sym: string) => {
@@ -93,21 +99,25 @@ export async function runBacktest(universe: string[], cfg: PlanConfig, days = 12
       return [{ ...scoreStock(s.symbol, closes), priceUsd: closes[closes.length - 1] * s.rate }];
     });
     const dayNo = curve.length;
-    const positions: Position[] = [...pos.entries()].map(([symbol, p]) => ({ symbol, quantity: p.quantity, avgCostUsd: p.avgCostUsd, heldDays: dayNo - p.boughtAt, priceUsd: priceOn(symbol) ?? p.avgCostUsd }));
+    const positions: Position[] = [...pos.entries()].map(([symbol, p]) => {
+      const priceUsd = priceOn(symbol) ?? p.avgCostUsd;
+      p.highWaterUsd = Math.max(p.highWaterUsd, priceUsd);
+      return { symbol, quantity: p.quantity, avgCostUsd: p.avgCostUsd, heldDays: dayNo - p.boughtAt, priceUsd, highWaterUsd: p.highWaterUsd };
+    });
     const plan = planActions({ candidates, positions, cashUsd: cash, tradesToday: 0, cfg });
     for (const a of plan) {
       if (a.action === "BUY") {
         const cost = a.quantity * a.priceUsd;
         if (cost > cash) continue;
         cash -= cost;
-        pos.set(a.symbol, { quantity: a.quantity, avgCostUsd: a.priceUsd, boughtAt: dayNo });
+        pos.set(a.symbol, { quantity: a.quantity, avgCostUsd: a.priceUsd, boughtAt: dayNo, highWaterUsd: a.priceUsd });
         tradeLog.push({ date, symbol: a.symbol, side: "BUY", quantity: a.quantity, priceUsd: a.priceUsd, reason: `Score ${a.score}: ${a.reasons.filter((r) => r.points > 0).slice(0, 2).map((r) => r.factor).join(", ")}`, pnlUsd: null });
       } else {
         const p = pos.get(a.symbol);
         if (!p) continue;
         cash += a.quantity * a.priceUsd;
         pos.delete(a.symbol);
-        tradeLog.push({ date, symbol: a.symbol, side: "SELL", quantity: a.quantity, priceUsd: a.priceUsd, reason: a.reasons[0]?.factor ?? "Sell signal", pnlUsd: (a.priceUsd - p.avgCostUsd) * a.quantity });
+        tradeLog.push({ date, symbol: a.symbol, side: "SELL", quantity: a.quantity, priceUsd: a.priceUsd, reason: a.trigger === "signal" ? `Sell signal (score ${a.score})` : TRIGGER_LABEL[a.trigger], pnlUsd: (a.priceUsd - p.avgCostUsd) * a.quantity });
       }
     }
 
@@ -159,5 +169,7 @@ export async function runBacktest(universe: string[], cfg: PlanConfig, days = 12
     curve,
     tradeLog: tradeLog.slice(-120).reverse(),
     symbolsUsed: stocks.length,
+    symbols: stocks.map((s) => s.symbol),
+    settings: { profitTargetPct: cfg.takeProfitPct, maxLossPct: cfg.stopLossPct, trailingStopPct: cfg.trailingStopPct ?? null, risk: cfg.risk, maxPositionPct: cfg.maxPositionPct, maxTradesPerDay: cfg.maxTradesPerDay, budgetUsd: cfg.budgetUsd },
   };
 }

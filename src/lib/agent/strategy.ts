@@ -73,7 +73,7 @@ export function scoreStock(symbol: string, closes: number[], newsTone?: number |
   return { symbol, score, confidence: clamp(confidence, 0, 100), reasons };
 }
 
-export type Position = { symbol: string; quantity: number; avgCostUsd: number; priceUsd: number; heldDays?: number };
+export type Position = { symbol: string; quantity: number; avgCostUsd: number; priceUsd: number; heldDays?: number; /** Highest price since the buy (trailing stop). */ highWaterUsd?: number };
 export type Candidate = StockScore & { priceUsd: number };
 
 export type PlanConfig = {
@@ -81,13 +81,19 @@ export type PlanConfig = {
   budgetUsd: number;
   maxPositionPct: number;
   maxTradesPerDay: number;
+  /** Maximum loss: sell when a position is this far below its buy price. */
   stopLossPct: number;
+  /** Profit target: sell when a position is this far above its buy price (0 = off). */
   takeProfitPct: number;
-  /** Signal-based sells wait this many days after buying (stop-loss / take-profit always apply). */
+  /** Trailing stop: sell when the price is this far below its highest price since the buy (null/0 = off). */
+  trailingStopPct?: number | null;
+  /** Signal-based sells wait this many days after buying (exit rules always apply). */
   minHoldDays?: number;
   /** Only buy stocks trading above their 200-day average. */
   trendFilter?: boolean;
 };
+
+export type Trigger = "signal" | "stop_loss" | "take_profit" | "trailing_stop";
 
 export type PlannedAction = {
   symbol: string;
@@ -96,46 +102,100 @@ export type PlannedAction = {
   priceUsd: number;
   score: number;
   confidence: number;
-  trigger: "signal" | "stop_loss" | "take_profit";
+  trigger: Trigger;
   reasons: Reason[];
 };
 
+/** An order the strategy wanted but a risk or portfolio limit stopped. */
+export type BlockedAction = { symbol: string; action: "BUY" | "SELL"; score: number; confidence: number; priceUsd: number; reason: string; reasons: Reason[] };
+
+const changePct = (p: Position) => ((p.priceUsd - p.avgCostUsd) / p.avgCostUsd) * 100;
+
+// ---------- Exit rules (risk protection, not a promise of profit) ----------
+
+/** Maximum loss: price at or below buy price − stopLossPct. */
+export function checkStopLoss(p: Position, stopLossPct: number): Reason | null {
+  const c = changePct(p);
+  if (!(stopLossPct > 0) || c > -stopLossPct) return null;
+  return { factor: "Maximum loss", points: -100, detail: `Down ${Math.abs(c).toFixed(1)}% from the buy price ${p.avgCostUsd.toFixed(2)} (limit ${stopLossPct}%).` };
+}
+
+/** Profit target: price at or above buy price + takeProfitPct (0 = off). */
+export function checkProfitTarget(p: Position, takeProfitPct: number): Reason | null {
+  const c = changePct(p);
+  if (!(takeProfitPct > 0) || c < takeProfitPct) return null;
+  return { factor: "Profit target", points: -100, detail: `Up ${c.toFixed(1)}% from the buy price ${p.avgCostUsd.toFixed(2)} (target ${takeProfitPct}%).` };
+}
+
+const peakOf = (p: Position) => Math.max(p.highWaterUsd ?? p.avgCostUsd, p.avgCostUsd);
+
+/** The trailing-stop sell level: highest price since the buy minus trailingStopPct. */
+export function trailingStopLevel(p: Position, trailingStopPct: number) {
+  return peakOf(p) * (1 - trailingStopPct / 100);
+}
+
+/** Trailing stop: price at or below (highest price since the buy) − trailingStopPct. */
+export function checkTrailingStop(p: Position, trailingStopPct: number | null | undefined): Reason | null {
+  if (!trailingStopPct || trailingStopPct <= 0) return null;
+  const peak = peakOf(p);
+  if (p.priceUsd > trailingStopLevel(p, trailingStopPct)) return null;
+  return { factor: "Trailing stop", points: -100, detail: `Fell to ${p.priceUsd.toFixed(2)}, ${(((peak - p.priceUsd) / peak) * 100).toFixed(1)}% below its high of ${peak.toFixed(2)} (trail ${trailingStopPct}%).` };
+}
+
+/** Which exit rule (if any) says to sell. Maximum loss first, then trailing stop, profit target, and a weak score after the minimum hold. */
+export function exitRule(p: Position, cfg: PlanConfig, c?: StockScore): { trigger: Trigger; why: Reason } | null {
+  const sl = checkStopLoss(p, cfg.stopLossPct);
+  if (sl) return { trigger: "stop_loss", why: sl };
+  const ts = checkTrailingStop(p, cfg.trailingStopPct);
+  if (ts) return { trigger: "trailing_stop", why: ts };
+  const tp = checkProfitTarget(p, cfg.takeProfitPct);
+  if (tp) return { trigger: "take_profit", why: tp };
+  const th = THRESHOLDS[cfg.risk];
+  if (c && c.score <= th.sell && (p.heldDays ?? Infinity) >= (cfg.minHoldDays ?? 0)) return { trigger: "signal", why: { factor: "Sell signal", points: c.score, detail: `Score ${c.score} is at or below the sell level (${th.sell}).` } };
+  return null;
+}
+
+/** Why a scanned stock was left alone (shown in the activity log). */
+export function holdReason(c: StockScore, cfg: PlanConfig, held: boolean): string {
+  const th = THRESHOLDS[cfg.risk];
+  if (c.reasons[0]?.factor === "Data") return "Not enough price history.";
+  if (held) return c.score <= th.sell ? `Holding: score ${c.score} is weak, but the minimum holding period hasn't passed.` : `Holding: no exit rule triggered (score ${c.score}).`;
+  if (c.score < th.buy) return `No valid entry signal: score ${c.score} is below the buy level (${th.buy}).`;
+  if (cfg.trendFilter && !c.reasons.some((r) => r.factor === "Long-term trend" && r.points > 0)) return "No valid entry: price is below its 200-day average (trend filter).";
+  return `Score ${c.score}: no action.`;
+}
+
 /**
- * Turns scores into orders under the user's limits. Exits first (stop-loss, take-profit, sell signal),
- * then buys the highest-scoring stocks the agent doesn't already hold, within budget, cash and trade caps.
- * `positions` are the agent-managed holdings only.
+ * Turns scores into orders under the user's limits. Exits first (maximum loss, trailing stop, profit target,
+ * sell signal), then buys the highest-scoring stocks the agent doesn't already hold, within budget, cash,
+ * per-stock and daily trade caps. Protective exits are never held back by the daily cap (they still count);
+ * signal sells and buys are. `positions` are the agent-managed holdings only.
+ * Also returns the orders a limit stopped, so they can be logged.
  */
-export function planActions(o: { candidates: Candidate[]; positions: Position[]; cashUsd: number; tradesToday: number; cfg: PlanConfig }): PlannedAction[] {
+export function planActionsDetailed(o: { candidates: Candidate[]; positions: Position[]; cashUsd: number; tradesToday: number; cfg: PlanConfig }): { actions: PlannedAction[]; blocked: BlockedAction[] } {
   const { cfg } = o;
   const th = THRESHOLDS[cfg.risk];
   const out: PlannedAction[] = [];
+  const blocked: BlockedAction[] = [];
   let tradesLeft = Math.max(0, cfg.maxTradesPerDay - o.tradesToday);
   const bySymbol = new Map(o.candidates.map((c) => [c.symbol, c]));
   let cash = o.cashUsd;
   let invested = o.positions.reduce((a, p) => a + p.quantity * p.priceUsd, 0);
+  const dailyCap = `Daily trade limit reached (${cfg.maxTradesPerDay}).`;
 
   for (const p of o.positions) {
-    if (tradesLeft <= 0) break;
     const c = bySymbol.get(p.symbol);
-    const changePct = ((p.priceUsd - p.avgCostUsd) / p.avgCostUsd) * 100;
-    let trigger: PlannedAction["trigger"] | null = null;
-    let why: Reason | null = null;
-    if (changePct <= -cfg.stopLossPct) {
-      trigger = "stop_loss";
-      why = { factor: "Stop-loss", points: -100, detail: `Down ${Math.abs(changePct).toFixed(1)}% from the buy price (limit ${cfg.stopLossPct}%).` };
-    } else if (changePct >= cfg.takeProfitPct) {
-      trigger = "take_profit";
-      why = { factor: "Take-profit", points: -100, detail: `Up ${changePct.toFixed(1)}% from the buy price (target ${cfg.takeProfitPct}%).` };
-    } else if (c && c.score <= th.sell && (p.heldDays ?? Infinity) >= (cfg.minHoldDays ?? 0)) {
-      trigger = "signal";
-      why = { factor: "Sell signal", points: c.score, detail: `Score ${c.score} is at or below the sell level (${th.sell}).` };
+    const exit = exitRule(p, cfg, c);
+    if (!exit) continue;
+    const reasons = [exit.why, ...(c?.reasons ?? [])];
+    if (exit.trigger === "signal" && tradesLeft <= 0) {
+      blocked.push({ symbol: p.symbol, action: "SELL", score: c?.score ?? 0, confidence: c?.confidence ?? 0, priceUsd: p.priceUsd, reason: dailyCap, reasons });
+      continue;
     }
-    if (trigger && why) {
-      out.push({ symbol: p.symbol, action: "SELL", quantity: p.quantity, priceUsd: p.priceUsd, score: c?.score ?? 0, confidence: c?.confidence ?? 100, trigger, reasons: [why, ...(c?.reasons ?? [])] });
-      cash += p.quantity * p.priceUsd;
-      invested -= p.quantity * p.priceUsd;
-      tradesLeft--;
-    }
+    out.push({ symbol: p.symbol, action: "SELL", quantity: p.quantity, priceUsd: p.priceUsd, score: c?.score ?? 0, confidence: c?.confidence ?? 100, trigger: exit.trigger, reasons });
+    cash += p.quantity * p.priceUsd;
+    invested -= p.quantity * p.priceUsd;
+    tradesLeft = Math.max(0, tradesLeft - 1);
   }
 
   const held = new Set(o.positions.map((p) => p.symbol));
@@ -143,20 +203,28 @@ export function planActions(o: { candidates: Candidate[]; positions: Position[];
   const inUptrend = (c: Candidate) => !cfg.trendFilter || c.reasons.some((r) => r.factor === "Long-term trend" && r.points > 0);
   const buys = o.candidates.filter((c) => c.score >= th.buy && !held.has(c.symbol) && inUptrend(c)).sort((a, b) => b.score - a.score || b.confidence - a.confidence);
   for (const c of buys) {
-    if (tradesLeft <= 0) break;
-    const room = Math.min(perPosition, cfg.budgetUsd - invested, cash);
+    const block = (reason: string) => blocked.push({ symbol: c.symbol, action: "BUY", score: c.score, confidence: c.confidence, priceUsd: c.priceUsd, reason, reasons: c.reasons });
+    if (tradesLeft <= 0) {
+      block(dailyCap);
+      continue;
+    }
+    const budgetLeft = cfg.budgetUsd - invested;
+    const room = Math.min(perPosition, budgetLeft, cash);
     const qty = Math.floor(room / c.priceUsd);
-    if (qty < 1) continue;
+    if (qty < 1) {
+      if (room === cash && cash < perPosition) block(`Not enough virtual cash: ${cash.toFixed(2)} USD left, one share costs ${c.priceUsd.toFixed(2)} USD.`);
+      else if (room === budgetLeft && budgetLeft < perPosition) block(`Budget fully used: ${Math.max(0, budgetLeft).toFixed(2)} USD of ${cfg.budgetUsd} USD left.`);
+      else block(`One share (${c.priceUsd.toFixed(2)} USD) is more than the ${cfg.maxPositionPct}% per-stock limit (${perPosition.toFixed(2)} USD).`);
+      continue;
+    }
     out.push({ symbol: c.symbol, action: "BUY", quantity: qty, priceUsd: c.priceUsd, score: c.score, confidence: c.confidence, trigger: "signal", reasons: c.reasons });
     cash -= qty * c.priceUsd;
     invested += qty * c.priceUsd;
     tradesLeft--;
   }
-  return out;
+  return { actions: out, blocked };
 }
 
-/** The default 24-stock universe: 12 US and 12 NIFTY large caps. */
-export const DEFAULT_UNIVERSE = [
-  "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "JPM", "V", "LLY", "AVGO", "COST",
-  "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "BHARTIARTL.NS", "ITC.NS", "LT.NS", "SBIN.NS", "HINDUNILVR.NS", "MARUTI.NS", "SUNPHARMA.NS",
-];
+export function planActions(o: { candidates: Candidate[]; positions: Position[]; cashUsd: number; tradesToday: number; cfg: PlanConfig }): PlannedAction[] {
+  return planActionsDetailed(o).actions;
+}

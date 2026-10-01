@@ -162,10 +162,11 @@ export type ReportStat = { label: string; value: string; tone?: "up" | "down" | 
 
 function statsHtml(stats: ReportStat[]) {
   const color = (t?: "up" | "down" | null) => (t === "up" ? "#059669" : t === "down" ? "#dc2626" : "#0f172a");
-  const cells = stats
-    .map((st) => `<td style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;vertical-align:top"><div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#64748b">${esc(st.label)}</div><div style="margin-top:4px;font-size:18px;font-weight:700;color:${color(st.tone)}">${esc(st.value)}</div></td>`)
-    .join('<td style="width:8px"></td>');
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate"><tr>${cells}</tr></table>`;
+  const cell = (st: ReportStat) => `<td style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;vertical-align:top"><div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#64748b">${esc(st.label)}</div><div style="margin-top:4px;font-size:18px;font-weight:700;color:${color(st.tone)}">${esc(st.value)}</div></td>`;
+  // At most three per row so long reports stay readable on phones.
+  const rows: ReportStat[][] = [];
+  for (let i = 0; i < stats.length; i += 3) rows.push(stats.slice(i, i + 3));
+  return rows.map((r) => `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;margin-bottom:8px"><tr>${r.map(cell).join('<td style="width:8px"></td>')}</tr></table>`).join("");
 }
 
 function tableHtml(t: ReportTable) {
@@ -452,6 +453,71 @@ export function priceAlertEmail(o: { name?: string | null; symbol: string; condi
       note: o.note ? `Your note: ${o.note}` : undefined,
       button: { label: `Open ${o.symbol}`, href: o.link },
       footer: "Alerts fire once and then turn off. Market data may be delayed. Virtual trading only, not financial advice.",
+    }),
+  };
+}
+
+const AUTO_FOOTER = "Paper trading only: no real money is used. The Auto-Trader uses configurable profit targets and risk protection, but market returns are not guaranteed. Not financial advice.";
+
+/** Sent after every automatic (or approved) Auto-Trader order. */
+export function autoTradeEmail(o: {
+  name?: string | null;
+  side: "BUY" | "SELL";
+  symbol: string;
+  quantity: number;
+  priceLabel: string;
+  score: number;
+  reason: string;
+  aiLabel: string;
+  at: Date;
+  entryLabel?: string;
+  pnlLabel?: string;
+  pnlPctLabel?: string;
+  pnlUp?: boolean;
+  exitReason?: string;
+}) {
+  const time = o.at.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  const rows: Row[] =
+    o.side === "BUY"
+      ? [["Stock", o.symbol], ["Quantity", String(o.quantity)], ["Buy price", o.priceLabel], ["Strategy score", String(o.score)], ["Reason", o.reason], ["AI review", o.aiLabel], ["Time", time]]
+      : [["Stock", o.symbol], ["Quantity", String(o.quantity)], ["Entry price", o.entryLabel ?? "—"], ["Exit price", o.priceLabel], ["Profit / loss", o.pnlLabel ?? "—"], ["Profit / loss %", o.pnlPctLabel ?? "—"], ["Exit reason", o.exitReason ?? o.reason], ["Time", time]];
+  return {
+    subject: `Auto-Trader ${o.side} Executed - ${o.symbol}`,
+    ...layout({
+      preheader: o.side === "BUY" ? `Bought ${o.quantity} ${o.symbol} at ${o.priceLabel}.` : `Sold ${o.quantity} ${o.symbol} at ${o.priceLabel} (${o.pnlLabel ?? ""}).`,
+      eyebrow: "AI Auto-Trader · virtual trade",
+      title: `${o.side === "BUY" ? "Bought" : "Sold"} ${o.quantity} ${o.symbol}`,
+      intro: `Hi ${o.name?.split(" ")[0] ?? "there"}, your Auto-Trader ${o.side === "BUY" ? "bought" : "sold"} ${o.symbol} automatically with virtual money.`,
+      stats: o.side === "SELL" && o.pnlLabel ? [{ label: "Realized P&L", value: o.pnlLabel, tone: o.pnlUp ? "up" : "down" }, { label: "Return", value: o.pnlPctLabel ?? "—", tone: o.pnlUp ? "up" : "down" }] : undefined,
+      rows,
+      button: { label: "Open Auto-Trader", href: `${appUrl()}/agent` },
+      footer: AUTO_FOOTER,
+    }),
+  };
+}
+
+/** The Auto-Trader's end-of-day report. */
+export function autoTraderSummaryEmail(o: {
+  name?: string | null;
+  date: Date;
+  stats: ReportStat[];
+  table?: ReportTable;
+  highlights?: string[];
+  intro: string;
+  title: string;
+}) {
+  return {
+    subject: `Auto-Trader daily summary · ${o.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+    ...layout({
+      preheader: o.intro,
+      eyebrow: "AI Auto-Trader · daily summary",
+      title: o.title,
+      intro: `Hi ${o.name?.split(" ")[0] ?? "there"}, ${o.intro}`,
+      stats: o.stats,
+      table: o.table,
+      highlights: o.highlights,
+      button: { label: "Open Auto-Trader", href: `${appUrl()}/agent` },
+      footer: AUTO_FOOTER,
     }),
   };
 }

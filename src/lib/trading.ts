@@ -100,12 +100,18 @@ export async function validateOrder(userId: string, input: OrderInput): Promise<
   };
 }
 
-export type ExecutedTrade = OrderPreview & { tradeId: string; realizedPnl: number | null };
+export type ExecutedTrade = OrderPreview & { tradeId: string; realizedPnl: number | null; /** SELL: average buy price (USD) of the shares sold. */ entryPrice: number | null };
+
+export type OrderOptions = {
+  /** Runs inside the trade's database transaction, so related records commit or roll back with it. */
+  inTransaction?: (tx: Prisma.TransactionClient, trade: { tradeId: string; realizedPnl: number | null; entryPrice: number | null; preview: OrderPreview }) => Promise<void>;
+};
 
 export async function executeOrder(
   userId: string,
   input: OrderInput,
   source: "UI" | "CHAT" | "AGENT",
+  options: OrderOptions = {},
 ): Promise<ExecutedTrade> {
   const preview = await validateOrder(userId, input);
   const { symbol, side, quantity, price, total } = preview;
@@ -114,6 +120,7 @@ export async function executeOrder(
   try {
     const result = await prisma.$transaction(async (tx) => {
       let realizedPnl: number | null = null;
+      let entryPrice: number | null = null;
 
       if (side === "BUY") {
         // Conditional update: fails if cash dropped since validation (e.g. two orders at once).
@@ -146,7 +153,8 @@ export async function executeOrder(
         if (sold.count !== 1) throw new TradeError(`You don't own enough ${symbol}.`);
         await tx.holding.deleteMany({ where: { id: holding.id, quantity: 0 } });
         await tx.user.update({ where: { id: userId }, data: { cashBalance: { increment: totalDec } } });
-        realizedPnl = Number(((price - Number(holding.avgCost)) * quantity).toFixed(2));
+        entryPrice = Number(holding.avgCost);
+        realizedPnl = Number(((price - entryPrice) * quantity).toFixed(2));
       }
 
       const trade = await tx.trade.create({
@@ -161,11 +169,13 @@ export async function executeOrder(
           source,
         },
       });
-      return { tradeId: trade.id, realizedPnl };
+      await options.inTransaction?.(tx, { tradeId: trade.id, realizedPnl, entryPrice, preview });
+      return { tradeId: trade.id, realizedPnl, entryPrice };
     });
 
-    await audit(userId, "trade_executed", { symbol, side, quantity, price, total, source });
-    void sendOrderEmail(userId, preview, result.realizedPnl, source);
+    await audit(userId, "trade_executed", { symbol, side, quantity, price, total, source, tradeId: result.tradeId });
+    // The auto-trader sends its own, more detailed trade email through the notification service.
+    if (source !== "AGENT") void sendOrderEmail(userId, preview, result.realizedPnl, source);
     return { ...preview, ...result };
   } catch (err) {
     if (err instanceof TradeError) await audit(userId, "trade_denied", { symbol, side, quantity, source, reason: err.message });

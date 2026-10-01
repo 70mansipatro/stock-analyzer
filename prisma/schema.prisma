@@ -130,6 +130,7 @@ model Trade {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([userId, source, createdAt])
 }
 
 // Guardrail decisions and sensitive actions, for review in Prisma Studio.
@@ -264,9 +265,9 @@ model Notification {
 }
 
 enum AgentMode {
-  AUTO     // trades by itself
-  SUGGEST  // proposes trades for the user to approve
-  DRY_RUN  // only records what it would do
+  FULL_AUTO // monitors the selected stocks and buys/sells by itself, no approval
+  SUGGEST   // proposes trades for the user to approve
+  DRY_RUN   // only records what it would do
 }
 
 enum AgentRisk {
@@ -275,30 +276,61 @@ enum AgentRisk {
   AGGRESSIVE
 }
 
-// Settings for the AI auto-trader, one per user.
+// Settings for the AI auto-trader, one per user. Virtual money only.
 model AgentConfig {
-  userId          String    @id
-  enabled         Boolean   @default(false)
-  mode            AgentMode @default(AUTO)
-  risk            AgentRisk @default(BALANCED)
+  userId              String    @id
+  enabled             Boolean   @default(false)
+  mode                AgentMode @default(FULL_AUTO)
+  risk                AgentRisk @default(BALANCED)
   // USD the agent may keep invested at once.
-  budget          Decimal   @default(5000) @db.Decimal(14, 2)
-  maxPositionPct  Int       @default(15)   // max % of budget in one stock
-  maxTradesPerDay Int       @default(10)
-  stopLossPct     Decimal   @default(8)    @db.Decimal(5, 2)
-  takeProfitPct   Decimal   @default(15)   @db.Decimal(5, 2)
-  universe        String[]
-  useAiReview     Boolean   @default(true)
-  dailyEmail      Boolean   @default(true)
+  budget              Decimal   @default(5000) @db.Decimal(14, 2)
+  maxPositionPct      Int       @default(15)   // max % of budget in one stock
+  maxTradesPerDay     Int       @default(10)
+  // Maximum loss: sell if a position falls this far below its buy price.
+  stopLossPct         Decimal   @default(15)   @db.Decimal(5, 2)
+  // Profit target: sell if a position rises this far above its buy price (0 = off).
+  takeProfitPct       Decimal   @default(15)   @db.Decimal(5, 2)
+  // Trailing stop: sell if the price falls this far below its highest price since the buy.
+  trailingStopEnabled Boolean   @default(false)
+  trailingStopPct     Decimal   @default(10)   @db.Decimal(5, 2)
+  // The user's selected stocks (US tickers, or Indian with .NS / .BO).
+  universe            String[]
+  useAiReview         Boolean   @default(true)
+  // Only trade a stock while its own exchange is open (NYSE/Nasdaq or NSE/BSE).
+  marketHoursOnly     Boolean   @default(true)
+  dailyEmail          Boolean   @default(true)
+  // Hour of the day (server time, 0-23) after which the daily summary email goes out.
+  summaryHour         Int       @default(20)
+  // Email after every automatic buy and sell.
+  tradeEmails         Boolean   @default(true)
   // Demo: runs every minute and ignores market hours.
-  demoSpeed       Boolean   @default(false)
-  lastRunAt       DateTime?
+  demoSpeed           Boolean   @default(false)
+  lastRunAt           DateTime?
   // Lock: set while a run is in progress (shared by the scheduler and manual runs).
-  runningSince    DateTime?
-  lastSummaryDate String?
-  updatedAt       DateTime  @updatedAt
+  runningSince        DateTime?
+  lastSummaryDate     String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positions AgentPosition[]
+}
+
+// A position the agent opened, kept until it is sold. Tracks the highest price for the trailing stop.
+// Quantity and cost come from the user's Holding and the agent's trades; this only adds what they can't.
+model AgentPosition {
+  id            String   @id @default(cuid())
+  userId        String
+  symbol        String
+  // Highest price (USD) seen since the buy.
+  highWaterUsd  Decimal  @db.Decimal(14, 4)
+  buyTradeId    String?
+  openedAt      DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  config AgentConfig @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, symbol])
 }
 
 model AgentRun {
@@ -306,8 +338,12 @@ model AgentRun {
   userId     String
   trigger    String    // scheduled | manual
   mode       AgentMode
-  status     String    // completed | skipped | failed
+  status     String    // running | completed | skipped | failed
   scanned    Int       @default(0)
+  buyCount   Int       @default(0)
+  sellCount  Int       @default(0)
+  holdCount  Int       @default(0)
+  errorCount Int       @default(0)
   summary    String?
   aiNote     String?   @db.Text
   startedAt  DateTime  @default(now())
@@ -318,26 +354,44 @@ model AgentRun {
   @@index([userId, startedAt])
 }
 
+// One row per stock per run: what the agent decided, why, and what happened. Kept after a position closes.
 model AgentDecision {
-  id         String   @id @default(cuid())
-  runId      String
-  userId     String
-  symbol     String
-  action     String   // BUY | SELL | HOLD
-  quantity   Int      @default(0)
-  price      Decimal? @db.Decimal(14, 4) // stock's own currency
-  score      Int      @default(0)        // -100..100
-  confidence Int      @default(0)        // 0..100
-  reasons    Json
-  aiNote     String?
-  // executed | suggested | approved | rejected | dry_run | skipped | failed | hold
-  status     String
-  error      String?
-  tradeId    String?
-  createdAt  DateTime @default(now())
+  id             String   @id @default(cuid())
+  runId          String
+  userId         String
+  symbol         String
+  market         String?  // US | IN
+  action         String   // BUY | SELL | HOLD
+  quantity       Int      @default(0)
+  price          Decimal? @db.Decimal(14, 4) // stock's own currency
+  priceUsd       Decimal? @db.Decimal(14, 4)
+  score          Int      @default(0)        // -100..100
+  confidence     Int      @default(0)        // 0..100
+  reasons        Json
+  // signal | stop_loss | take_profit | trailing_stop (sells), signal (buys)
+  trigger        String?
+  aiNote         String?
+  // approved | vetoed | unavailable | off | not_reviewed | not_required
+  aiStatus       String?
+  // executing | executed | suggested | approved | rejected | dry_run | skipped | blocked | market_closed | failed | hold
+  status         String
+  error          String?
+  tradeId        String?
+  // Sells: average buy price (USD) and the realized result.
+  entryPriceUsd  Decimal? @db.Decimal(14, 4)
+  realizedPnl    Decimal? @db.Decimal(14, 2)
+  realizedPnlPct Decimal? @db.Decimal(8, 2)
+  // Risk settings in force when the decision was made.
+  settings       Json?
+  // Set while executing so the same signal can never be traded twice (cleared if the order fails).
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
 
   run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, status])
+  @@index([userId, action, createdAt])
+  @@index([userId, symbol, createdAt])
+  @@index([tradeId])
 }

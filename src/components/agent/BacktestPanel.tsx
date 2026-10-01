@@ -58,13 +58,16 @@ export function BacktestPanel() {
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
           {pending ? "Replaying history…" : `Backtest last ${PERIODS.find((p) => p.days === days)?.label}`}
         </button>
-        <span className="text-xs text-slate-500">Replays real daily prices through your current settings. Takes a few seconds.</span>
+        <span className="text-xs text-slate-500">Historical simulation: replays real daily prices through your saved settings, selected stocks, profit target, maximum loss and trailing stop. Takes a few seconds.</span>
       </div>
 
       {error && <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">⚠ {error}</p>}
 
       {result && (
         <div className="animate-fade-up space-y-5">
+          <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-xs text-violet-100/90">
+            <b>Historical simulation</b> · {result.symbols.join(", ")} · {result.settings.risk.toLowerCase()} risk · profit target {result.settings.profitTargetPct > 0 ? `${result.settings.profitTargetPct}%` : "off"} · maximum loss {result.settings.maxLossPct}% · trailing stop {result.settings.trailingStopPct ? `${result.settings.trailingStopPct}%` : "off"} · {result.settings.maxPositionPct}% per stock · {result.settings.maxTradesPerDay} trades/day. Backtest results do not guarantee future profit.
+          </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
             {[
               { label: "Auto-trader return", value: pctLabel(result.returnPct), tone: result.returnPct },
@@ -118,7 +121,7 @@ export function BacktestPanel() {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-slate-500">
-              {fmtDate(result.startDate)} – {fmtDate(result.endDate)} · {result.days} trading days · {result.symbolsUsed} stocks · starting with {ccy.fmt(result.startValue, 0)}. Past results don&apos;t predict future returns; non-USD stocks use today&apos;s exchange rate.
+              {fmtDate(result.startDate)} – {fmtDate(result.endDate)} · {result.days} trading days · {result.symbolsUsed} stocks · starting with {ccy.fmt(result.startValue, 0)}. Uses daily closing prices, so intraday moves aren&apos;t seen. Past results don&apos;t predict future returns; non-USD stocks use today&apos;s exchange rate.
             </p>
           </div>
 

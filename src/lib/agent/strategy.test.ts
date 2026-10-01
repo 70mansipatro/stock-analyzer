@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planActions, scoreStock, THRESHOLDS, type Candidate, type PlanConfig } from "./strategy";
+import { checkProfitTarget, checkStopLoss, checkTrailingStop, exitRule, holdReason, planActions, planActionsDetailed, scoreStock, THRESHOLDS, trailingStopLevel, type Candidate, type PlanConfig, type Position } from "./strategy";
 
 // Synthetic price series (oldest first).
 const trend = (n: number, start: number, dailyPct: number, wiggle = 0.004) =>
@@ -127,5 +127,59 @@ describe("planActions", () => {
     const c = [cand("A", 40, 100)];
     expect(planActions({ candidates: c, positions: [], cashUsd: 10_000, tradesToday: 0, cfg: { ...cfg, risk: "AGGRESSIVE" } })).toHaveLength(1);
     expect(planActions({ candidates: c, positions: [], cashUsd: 10_000, tradesToday: 0, cfg: { ...cfg, risk: "CONSERVATIVE" } })).toHaveLength(0);
+  });
+});
+
+describe("exit rules", () => {
+  const pos = (priceUsd: number, extra: Partial<Position> = {}): Position => ({ symbol: "A", quantity: 10, avgCostUsd: 100, priceUsd, heldDays: 1, ...extra });
+  const c15: PlanConfig = { ...cfg, stopLossPct: 15, takeProfitPct: 15 };
+
+  it("sells at the +15% profit target (buy 100 → 115)", () => {
+    expect(checkProfitTarget(pos(114.9), 15)).toBeNull();
+    expect(checkProfitTarget(pos(115), 15)?.factor).toBe("Profit target");
+    expect(planActions({ candidates: [], positions: [pos(115)], cashUsd: 0, tradesToday: 0, cfg: c15 })[0]).toMatchObject({ action: "SELL", trigger: "take_profit" });
+  });
+
+  it("sells at the −15% maximum loss (buy 100 → 85)", () => {
+    expect(checkStopLoss(pos(85.1), 15)).toBeNull();
+    expect(checkStopLoss(pos(85), 15)?.factor).toBe("Maximum loss");
+    expect(planActions({ candidates: [], positions: [pos(85)], cashUsd: 0, tradesToday: 0, cfg: c15 })[0]).toMatchObject({ trigger: "stop_loss" });
+  });
+
+  it("sells on a trailing stop: buy 100, high 130, 10% trail → sells at ~117", () => {
+    const t = { ...c15, takeProfitPct: 0, trailingStopPct: 10 };
+    expect(trailingStopLevel(pos(120, { highWaterUsd: 130 }), 10)).toBeCloseTo(117);
+    expect(checkTrailingStop(pos(118, { highWaterUsd: 130 }), 10)).toBeNull();
+    expect(planActions({ candidates: [], positions: [pos(117, { highWaterUsd: 130 })], cashUsd: 0, tradesToday: 0, cfg: t })[0]).toMatchObject({ trigger: "trailing_stop" });
+  });
+
+  it("has no trailing stop unless it is switched on, and 0 turns the profit target off", () => {
+    expect(checkTrailingStop(pos(100, { highWaterUsd: 200 }), null)).toBeNull();
+    expect(planActions({ candidates: [], positions: [pos(150)], cashUsd: 0, tradesToday: 0, cfg: { ...c15, takeProfitPct: 0 } })).toHaveLength(0);
+  });
+
+  it("checks maximum loss first when several rules trigger", () => {
+    expect(exitRule(pos(80, { highWaterUsd: 130 }), { ...c15, trailingStopPct: 10 })?.trigger).toBe("stop_loss");
+  });
+
+  it("never holds back a protective exit because of the daily trade cap", () => {
+    const r = planActionsDetailed({ candidates: [cand("B", 90, 100)], positions: [pos(80)], cashUsd: 10_000, tradesToday: 10, cfg: c15 });
+    expect(r.actions.map((a) => a.trigger)).toEqual(["stop_loss"]);
+    expect(r.blocked).toEqual([expect.objectContaining({ symbol: "B", reason: expect.stringMatching(/Daily trade limit/) })]);
+  });
+});
+
+describe("planActionsDetailed limits", () => {
+  it("explains a buy blocked by cash, budget or the per-stock limit", () => {
+    const one = (o: { cash: number; price: number; positions?: Position[] }) => planActionsDetailed({ candidates: [cand("X", 90, o.price)], positions: o.positions ?? [], cashUsd: o.cash, tradesToday: 0, cfg }).blocked[0]?.reason;
+    expect(one({ cash: 50, price: 100 })).toMatch(/Not enough virtual cash/);
+    expect(one({ cash: 10_000, price: 2_500 })).toMatch(/per-stock limit/);
+    expect(one({ cash: 10_000, price: 100, positions: [{ symbol: "H", quantity: 100, avgCostUsd: 100, priceUsd: 99.5, heldDays: 1 }] })).toMatch(/Budget fully used/);
+  });
+
+  it("says why a stock was held", () => {
+    expect(holdReason(cand("A", 10, 100), cfg, false)).toMatch(/No valid entry signal/);
+    expect(holdReason(cand("A", 90, 100, false), cfg, false)).toMatch(/200-day/);
+    expect(holdReason(cand("A", 10, 100), cfg, true)).toMatch(/no exit rule/);
   });
 });
